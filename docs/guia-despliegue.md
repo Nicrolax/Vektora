@@ -416,6 +416,11 @@ descartaría por http).
 📷 **Captura 7** — `kubectl get pods,svc` con `vektora-db` y `vektora-app` en `Running 1/1` y
 los dos Services.
 
+Comprobado en la PC del equipo (minikube v1.39, Kubernetes v1.37, VirtualBox): los dos pods
+en `Running 1/1`, el PVC `Bound` de 1 Gi, 8 tareas en la base, `/health` con
+`{"estado":"ok",…,"base":"ok"}`, la app corriendo como uid 1001 y el inicio de sesión con la
+cuenta de prueba llevando al panel.
+
 La misma prueba corre sola en GitHub Actions (workflow **Kubernetes**, con un clúster `kind`)
 cada vez que cambia `k8s/`: comprueba pods en Running, 8 tareas en la base, `/health` 200 y
 uid 1001.
@@ -429,5 +434,5 @@ uid 1001.
 | Datos de prueba ausentes | El PVC ya existía (los scripts solo corren con el volumen vacío) | `kubectl delete -k k8s/ && kubectl delete pvc vektora-db-datos` y volver a aplicar |
 | `ImagePullBackOff` | La imagen de ghcr.io no es pública o no hay internet | Paquete `vektora` en GitHub → *Change visibility → Public* |
 | minikube con VirtualBox: «VT-X/AMD-v not enabled» | Hyper-V ocupa la virtualización | `--no-vtx-check`, o usar `--driver=hyperv` desde una consola de administrador |
-| minikube con VirtualBox: `VERR_INTNET_FLT_IF_NOT_FOUND` (no encuentra la red «Host-Only») | Windows desactivó el filtro de red de VirtualBox en el adaptador Host-Only | PowerShell **como administrador**: `Get-NetAdapter \| Where InterfaceDescription -match 'VirtualBox Host-Only' \| Enable-NetAdapterBinding -ComponentID VBoxNetLwf`; después `minikube delete` y `minikube start` de nuevo. Si sigue, reinstalar VirtualBox o usar Docker Desktop (`--driver=docker`) |
+| minikube con VirtualBox: `VERR_INTNET_FLT_IF_NOT_FOUND` (no encuentra la red «Host-Only») | El adaptador Host-Only de VirtualBox quedó en un estado que el filtro de red no reconoce | PowerShell **como administrador**: `Get-NetAdapter \| Where InterfaceDescription -match 'VirtualBox Host-Only' \| Restart-NetAdapter`; si el filtro estuviera desactivado, `… \| Enable-NetAdapterBinding -ComponentID oracle_VBoxNetLwf`. Después `minikube delete` y `minikube start` de nuevo. Si sigue, reiniciar la PC, reinstalar VirtualBox o usar Docker Desktop (`--driver=docker`) |
 | `OOMKilled` en la app | Límite de memoria chico para la carga | Subir `limits.memory` en `app-deployment.yaml` |
