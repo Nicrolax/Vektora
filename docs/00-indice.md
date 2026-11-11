@@ -39,6 +39,7 @@ Nadie aprueba nada por el camino.
 | [`informe-seguridad.md`](informe-seguridad.md) | Análisis SSDLC (SCA, SAST, Trivy, ZAP, gitleaks): hallazgos, correcciones y hardening |
 | [`diagramas/`](diagramas/) | Arquitectura, modelo de datos, capas y flujo de despliegue, en Mermaid |
 | [`defensa.md`](defensa.md) | Guion de la demo, R1–R12 con archivo y línea, y preguntas probables por archivo |
+| [`presentacion/`](presentacion/) | La presentación para la defensa (PDF, 18 diapositivas) y su [guion](presentacion/guion.md): cómo se cumplió cada punto de la propuesta |
 
 ## Documentos auxiliares
 

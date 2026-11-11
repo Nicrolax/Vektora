@@ -190,6 +190,7 @@ Ninguna de estas cosas es código; son pruebas y preparación.
 |---|---|
 | Entender el producto en simple | [`10-guia-para-el-equipo.md`](10-guia-para-el-equipo.md) |
 | Entender qué hicimos y por qué | Esta guía |
+| La presentación y qué decir en cada diapositiva | [`presentacion/`](presentacion/) y su [guion](presentacion/guion.md) |
 | El guion de la demo y las preguntas por archivo | [`defensa.md`](defensa.md) |
 | Levantar todo paso a paso | [`guia-despliegue.md`](guia-despliegue.md) |
 | Qué encontró cada herramienta de seguridad | [`informe-seguridad.md`](informe-seguridad.md) |

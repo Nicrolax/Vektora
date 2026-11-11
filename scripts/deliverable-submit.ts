@@ -17,6 +17,8 @@
  *     "artifacts": [{ "type": "url", "url": "https://…", "label": "Repositorio" }],
  *     "evidence": { "AC-1": "Dónde se demuestra AC-1", "AC-2": "…" }
  *   }
+ *
+ * Hay dos entregas completas de ejemplo en `scripts/ejemplos/`.
  */
 
 import '@/lib/env';

@@ -233,7 +233,8 @@ Los umbrales son **medidos, no puestos a ojo**. No cambiarlos sin volver a medir
   Sin fecha fija: se presenta cuando el producto esté terminado.
 - Presentación en **URUCON Juniors 2026** (jornada de pósters, material en español).
 - Documentación evaluable en `docs/` (índice en `00-indice.md`): 01–07, `guia-despliegue.md`,
-  `informe-seguridad.md`, `diagramas/` y `defensa.md`.
+  `informe-seguridad.md`, `diagramas/`, `defensa.md` y `presentacion/` (PDF + guion). Para
+  el equipo: `10-guia-para-el-equipo.md` y `12-que-hicimos-y-por-que.md`.
 
 ### Examen de despliegue
 

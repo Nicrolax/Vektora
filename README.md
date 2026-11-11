@@ -18,7 +18,8 @@ pgvector, todo en servicios gratuitos.
 Guía paso a paso: [`docs/guia-despliegue.md`](docs/guia-despliegue.md) · Seguridad:
 [`docs/informe-seguridad.md`](docs/informe-seguridad.md) · Diagramas:
 [`docs/diagramas/`](docs/diagramas/) · Defensa: [`docs/defensa.md`](docs/defensa.md) ·
-Para entenderlo desde cero: [`docs/12-que-hicimos-y-por-que.md`](docs/12-que-hicimos-y-por-que.md).
+Para entenderlo desde cero: [`docs/12-que-hicimos-y-por-que.md`](docs/12-que-hicimos-y-por-que.md) ·
+Presentación: [`docs/presentacion/`](docs/presentacion/).
 
 ---
 
@@ -81,7 +82,7 @@ scripts/      CLIs: sql:aplicar, db:check, cuenta:admin, el ciclo autónomo…
 tests/        Vitest: unitarias y tests/integracion (contra PostgreSQL real)
 Dockerfile · docker-compose.yml · .env.example
 k8s/          manifiestos de Kubernetes (Nivel 3, fase 4 del examen)
-docs/         guía de despliegue, informe de seguridad, diagramas, defensa y documentos 01–11
+docs/         guía de despliegue, informe de seguridad, diagramas, defensa, presentación y documentos 01–12
 .github/      CI, imagen en ghcr.io, agentes, Kubernetes (kind), seguridad, CodeQL, ZAP, Dependabot
 ```
 
@@ -227,7 +228,7 @@ scripts/
   deliverable-submit.ts      npm run deliver -- <task_id> <archivo.json|.md>
   qa-review.ts               npm run qa -- <deliverable_id> [--dry-run|--task|--all]
   cron-local.ts              npm run cron — dispara los trabajos programados en local
-  cleanup-legacy.ps1         Borrado único de los archivos huérfanos del refactor
+  ejemplos/                  Dos entregas de ejemplo (.json) para npm run deliver
 
 tests/                       Suite de Vitest del núcleo (sin red, sin base de datos)
 ```

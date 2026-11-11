@@ -5,9 +5,9 @@ import { FormularioProyecto } from './formulario';
 export const metadata = { title: 'Nuevo proyecto' };
 
 /**
- * La planificación es sincrónica y llama a un modelo de lenguaje: en el free tier de Vercel
- * el límite por defecto son 10 segundos, y una planificación real ronda los 25. Sin esto, la
- * función se cortaría a mitad y el usuario vería un error genérico con el proyecto ya creado.
+ * La planificación es sincrónica y llama a un modelo de lenguaje: una real ronda los 25 s.
+ * `maxDuration` lo leen las plataformas con límite por función (allí el defecto es de 10 s y
+ * cortaría la planificación a la mitad). En Render y Docker no hay ese límite y no cambia nada.
  */
 export const maxDuration = 60;
 

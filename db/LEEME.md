@@ -59,7 +59,7 @@ múltiple). Ninguna revisión visual los habría atrapado.
 
 - **`project_dag` es una FUNCIÓN, no una vista.** Devuelve el grafo entero de un proyecto
   en un solo `jsonb` (tareas + aristas por código). Se invoca con
-  `supabase.rpc('project_dag', { p_project_id })`, no con `.from('project_dag')`.
+  `select public.project_dag(p_project_id => $1)`, no con `from project_dag`.
 - **`task_dependencies` no tiene `project_id`.** La pertenencia se deriva de
   `project_tasks`, y `prevent_dag_cycles` comprueba que ambos extremos sean del mismo
   proyecto. La columna de destino es `depends_on_task_id`.

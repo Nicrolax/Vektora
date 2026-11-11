@@ -3,8 +3,8 @@
  *
  *   npm run plan -- "Necesito un micrositio de captación con formulario y analítica" [presupuesto]
  *
- * Requisitos: GROQ_API_KEY o GOOGLE_AI_API_KEY, y SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
- * con `db/schema.sql` y `db/migrations/0002_planner.sql` ya aplicados.
+ * Requisitos: GROQ_API_KEY o GOOGLE_AI_API_KEY, y la conexión a PostgreSQL en DB_* con
+ * los scripts de `sql/` ya aplicados (`npm run sql:aplicar`, o la base de docker compose).
  *
  * Propietario del proyecto: se usa VEKTORA_OWNER_ID si está definido, y se VERIFICA que
  * exista en `public.users` antes de gastar una llamada al modelo — un uuid que no está en

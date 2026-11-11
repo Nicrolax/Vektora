@@ -6,12 +6,12 @@
  *   npm run cron -- evaluar
  *   npm run cron -- --url http://localhost:3001
  *
- * En producción estos trabajos los dispara el planificador de Vercel cada pocos minutos.
+ * En producción estos trabajos los dispara GitHub Actions (workflow «Agentes») cada 10–15 min.
  * En desarrollo NO existe ese reloj: `next dev` sirve páginas y nada más. Sin este script,
  * una tarea recién planificada se queda esperando a alguien que nunca llega, y el sistema
  * parece roto cuando en realidad está funcionando y no tiene quién le dé cuerda.
  *
- * Llama a los endpoints HTTP reales con el mismo secreto que usará Vercel, así que lo que
+ * Llama a los endpoints HTTP reales con el mismo secreto que usa ese workflow, así que lo que
  * se prueba aquí es exactamente lo que va a correr desplegado — incluida la autorización.
  */
 
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
 
   console.log('\n=== VEKTORA · disparador local de trabajos programados ===');
   console.log(
-    '\nEn producción esto lo hace el reloj de Vercel. En desarrollo hay que darle cuerda.',
+    '\nEn producción esto lo hace el reloj de GitHub Actions. En desarrollo hay que darle cuerda.',
   );
 
   let todoBien = true;
