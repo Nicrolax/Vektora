@@ -17,7 +17,8 @@ pgvector, todo en servicios gratuitos.
 
 Guía paso a paso: [`docs/guia-despliegue.md`](docs/guia-despliegue.md) · Seguridad:
 [`docs/informe-seguridad.md`](docs/informe-seguridad.md) · Diagramas:
-[`docs/diagramas/`](docs/diagramas/) · Defensa: [`docs/defensa.md`](docs/defensa.md).
+[`docs/diagramas/`](docs/diagramas/) · Defensa: [`docs/defensa.md`](docs/defensa.md) ·
+Para entenderlo desde cero: [`docs/12-que-hicimos-y-por-que.md`](docs/12-que-hicimos-y-por-que.md).
 
 ---
 

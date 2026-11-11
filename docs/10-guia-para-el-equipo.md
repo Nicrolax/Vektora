@@ -99,7 +99,9 @@ npm run cron                    # empuja al sistema a trabajar (adjudicar y eval
 esas dos acciones solo, cada 10 y 15 minutos. En una computadora no hay reloj, así que se le
 da cuerda a mano. Es el mismo código, solo que ejecutado por nosotros en vez de por el reloj.
 
-La guía completa, paso a paso, está en [`guia-despliegue.md`](guia-despliegue.md).
+La guía completa, paso a paso, está en [`guia-despliegue.md`](guia-despliegue.md). Para la
+historia del proyecto, un diccionario de términos y respuestas cortas a las preguntas más
+probables, ver [`12-que-hicimos-y-por-que.md`](12-que-hicimos-y-por-que.md).
 
 ## Lo que conviene saber para defender el proyecto
 

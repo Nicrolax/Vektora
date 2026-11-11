@@ -220,6 +220,7 @@ Cada integrante domina un bloque y puede responder los otros con esta guía.
 | Manifiestos en `k8s/` y pods en Running | ✅ | Captura 7 y el workflow **Kubernetes** (kind) |
 | Resultados de los análisis de seguridad | ✅ | `informe-seguridad.md`; falta la captura S1 de SonarLint |
 | README, guía, diagramas e informe en el repo | ✅ | `README.md`, `docs/guia-despliegue.md`, `docs/diagramas/`, `docs/informe-seguridad.md` |
+| Reloj de los agentes corriendo solo | ⬜ | *Actions → Agentes* tiene una sola corrida (manual, 11/11) y ninguna programada. La corrida manual llegó a la app y respondió bien. Ver el aviso de abajo |
 | Guía probada por otro grupo | ⬜ | Pasarles `docs/guia-despliegue.md` y anotar lo que les costó |
 | Todos pueden explicar cada archivo | ⬜ | Repasar las secciones 2 y 3 de esta guía, cada uno su bloque (sección 4) |
 
@@ -230,3 +231,15 @@ Cada integrante domina un bloque y puede responder los otros con esta guía.
 - **5** — consola de Aiven: el servicio en *Running* y el `SELECT` de la consulta A (sección
   1) con la fila creada desde la app.
 - **S1** — SonarLint en VS Code sobre `lib/` y `app/`.
+
+**Aviso: el reloj de los agentes no está corriendo solo.** El workflow `agentes.yml` tiene
+horario (`*/15` y `5-59/10`), pero GitHub no registró ninguna corrida programada desde que
+se agregó el 11/11. Sin reloj el ciclo no avanza: la última respuesta dejó a T-01 en la
+«ronda 2 de 4», y no llega a la escalada si nadie dispara las rondas. Qué hacer:
+
+1. *Actions → Agentes*: si arriba aparece que el workflow está deshabilitado, **Enable
+   workflow**.
+2. Si no, que llegue a `main` cualquier commit que toque `agentes.yml` (eso hace que GitHub
+   vuelva a leer el horario) y revisar a la media hora que aparezcan corridas con el evento
+   `schedule`.
+3. Para la demo, mientras tanto: *Actions → Agentes → Run workflow* lo dispara a mano.

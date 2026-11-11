@@ -16,6 +16,11 @@
 #   · secreto  CRON_SECRET — el mismo valor que en Render
 #   · variable APP_URL     — https://<servicio>.onrender.com (sin barra al final)
 # Sin ellos el workflow termina avisando, sin fallar: no hay app desplegada todavía.
+#
+# Cómo saber si el reloj anda: en Actions → Agentes tienen que aparecer corridas con el
+# evento `schedule`, no solo las manuales. Si no aparecen, el ciclo no avanza solo (las
+# tareas se quedan en la misma ronda). GitHub lee el horario de la versión de este archivo
+# que está en `main`; un commit que lo toca hace que lo vuelva a registrar.
 name: Agentes
 
 on:

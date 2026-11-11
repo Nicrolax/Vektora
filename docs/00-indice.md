@@ -46,6 +46,7 @@ Nadie aprueba nada por el camino.
 |---|---|
 | [`07-repositorio-y-auditoria.md`](07-repositorio-y-auditoria.md) | Preparación del repositorio y del análisis estático |
 | [`10-guia-para-el-equipo.md`](10-guia-para-el-equipo.md) | **Cómo funciona el proyecto en palabras simples.** Para quien no escribió el código |
+| [`12-que-hicimos-y-por-que.md`](12-que-hicimos-y-por-que.md) | **Qué hicimos, en qué orden y por qué**, con diccionario, preguntas probables y lo que falta. Para preparar la defensa desde cero |
 | [`11-declaracion-de-uso-de-ia.md`](11-declaracion-de-uso-de-ia.md) | **Declaración formal de uso de IA y de autoría.** Modelos empleados y alcance de lo declarado |
 
 La documentación técnica detallada de cada fase de desarrollo —decisiones de diseño, errores
