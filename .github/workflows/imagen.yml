@@ -1,0 +1,85 @@
+# VEKTORA — Imagen Docker en GitHub Container Registry (Nivel 1).
+#
+# En cada push a main: construye la imagen del Dockerfile, la PRUEBA con docker compose
+# (la base se carga con sql/, /health da 200, hay 8 tareas, el proceso no corre como root)
+# y solo si todo pasa la publica en ghcr.io/<dueño>/vektora con dos etiquetas:
+#   · latest      — la que usan Render y minikube
+#   · sha-<commit> — para volver a una versión exacta
+#
+# Se autentica con el GITHUB_TOKEN que GitHub crea para cada ejecución: no hay que guardar
+# ninguna contraseña. Después del primer push: GitHub → Packages → el paquete → Package
+# settings → Change visibility → Public (Render y minikube la descargan sin credenciales).
+name: Imagen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: imagen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  imagen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # Nombre fijo `vektora` bajo el dueño del repo, en minúsculas (ghcr lo exige). No se
+      # usa el nombre del repo: `_JBDPA_Grupo_1` empieza con guion bajo y Docker no lo acepta.
+      - name: Nombre de la imagen
+        id: nombre
+        run: echo "imagen=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/vektora" >> "$GITHUB_OUTPUT"
+
+      - name: .env DESECHABLE para la prueba (valores aleatorios, se descarta con el runner)
+        run: |
+          {
+            echo "POSTGRES_DB=vektora"
+            echo "POSTGRES_USER=vektora"
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "AUTH_SECRET=$(openssl rand -hex 32)"
+            echo "CRON_SECRET=$(openssl rand -hex 24)"
+          } > .env
+
+      - name: Construir y levantar con docker compose
+        run: docker compose up --build -d --wait --wait-timeout 180
+
+      - name: Probar la imagen
+        run: |
+          docker compose ps
+          curl -fsS http://localhost:3000/health | tee /dev/stderr | grep -q '"estado":"ok"'
+          test "$(docker compose exec -T app id -u)" != "0"
+          echo "uid de la app: $(docker compose exec -T app id -u)"
+          test "$(docker compose exec -T db psql -U vektora -d vektora -tAc 'select count(*) from public.project_tasks')" = "8"
+          # La página de acceso responde y no expone la cabecera X-Powered-By.
+          curl -fsSI http://localhost:3000/entrar > cabeceras.txt
+          cat cabeceras.txt
+          if grep -qi '^x-powered-by' cabeceras.txt; then echo 'expone X-Powered-By'; exit 1; fi
+
+      - name: Registros si algo falló
+        if: failure()
+        run: docker compose logs --no-color
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Etiquetar y publicar
+        run: |
+          IMAGEN='${{ steps.nombre.outputs.imagen }}'
+          docker tag ghcr.io/nicrolax/vektora:local "$IMAGEN:latest"
+          docker tag ghcr.io/nicrolax/vektora:local "$IMAGEN:sha-${GITHUB_SHA::7}"
+          docker push "$IMAGEN:latest"
+          docker push "$IMAGEN:sha-${GITHUB_SHA::7}"
+
+      - name: Apagar
+        if: always()
+        run: docker compose down -v

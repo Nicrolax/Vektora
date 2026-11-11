@@ -1,0 +1,9 @@
+# Finales de línea LF en lo que se ejecuta dentro de contenedores Linux, aunque el repo se
+# clone en Windows con core.autocrlf=true.
+*.sql        text eol=lf
+*.sh         text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+Dockerfile   text eol=lf
+.dockerignore text eol=lf
+.env.example text eol=lf

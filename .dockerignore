@@ -1,0 +1,35 @@
+# Lo que NUNCA entra al contexto de construcción de la imagen.
+
+# Credenciales: ni el .env real ni ninguna variante. Solo el ejemplo sin valores.
+.env
+.env.*
+!.env.example
+k8s/secret.yaml
+*.pem
+*.crt
+*.key
+
+# Dependencias y salidas de compilación: se generan dentro de la imagen.
+node_modules
+.next
+out
+coverage
+*.tsbuildinfo
+
+# Control de versiones, editores y herramientas.
+.git
+.github
+.claude
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.log
+
+# Documentación y manifiestos: no hacen falta para ejecutar la app.
+docs
+k8s
+README.md
+CLAUDE.md
+EXAMEN.md
+Claude outputs

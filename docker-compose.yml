@@ -1,0 +1,69 @@
+# =====================================================================================
+# VEKTORA — docker compose (Nivel 1)
+# =====================================================================================
+#   cp .env.example .env      # y completar los valores
+#   docker compose up --build -d
+#   docker compose ps         # db y app "healthy"
+#   abrir http://localhost:3000
+#
+# Dos servicios:
+#   · db  — PostgreSQL 16 con pgvector. Al crearse el volumen VACÍO ejecuta, en orden,
+#           sql/01-crear-tablas.sql y sql/02-datos-prueba.sql (initdb).
+#   · app — la imagen del Dockerfile. Espera a que la base esté sana antes de arrancar.
+#
+# Credenciales: todas salen de `.env` (que está en .gitignore). Este archivo no tiene
+# ninguna. Los DB_* de la app se FIJAN acá al contenedor `db`, así el mismo `.env` puede
+# tener los datos de Aiven para `npm run dev` sin que el compose se conecte a la nube.
+# =====================================================================================
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Definí POSTGRES_DB en .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Definí POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definí POSTGRES_PASSWORD en .env}
+    volumes:
+      - datos:/var/lib/postgresql/data
+      # Solo lectura: el contenedor no puede modificar los scripts del repo.
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    # Solo en 127.0.0.1: la base no queda expuesta a la red local, pero se puede consultar
+    # desde la PC (psql, DBeaver) para la evidencia del SELECT.
+    ports:
+      - "127.0.0.1:${DB_PUERTO_LOCAL:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  app:
+    build: .
+    image: ghcr.io/nicrolax/vektora:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # Red interna de Docker: la base no tiene certificado. A Aiven se conecta con SSL.
+      DB_SSL: disable
+      DB_SSL_CA: ""
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  datos:

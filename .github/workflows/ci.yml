@@ -1,0 +1,118 @@
+# VEKTORA — Integración continua.
+#
+# En cada push y pull request:
+#   · verificar — tipos, pruebas unitarias, que sql/ esté al día con db/, y build de Next.
+#   · base      — contra un PostgreSQL 16 + pgvector real: la suite de comportamiento de
+#                 db/verify (01–05), los scripts de sql/ aplicados DOS veces (idempotencia),
+#                 `npm run db:check` y las pruebas de integración (login BCrypt, RLS,
+#                 transacción con ROLLBACK, consultas preparadas).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run sql:check
+      - run: npm run build
+
+  base:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          # Credenciales DESECHABLES de un contenedor que vive lo que dura el job.
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+
+      - name: db/verify — comportamiento del SQL sobre una base vacía
+        run: |
+          psql -d postgres -c 'create database verificacion'
+          for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql \
+                   db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql \
+                   db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/seeds/01_skills.sql \
+                   db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql \
+                   db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql; do
+            echo "::group::$f"
+            psql -d verificacion -v ON_ERROR_STOP=1 -q -f "$f" | tee -a verify.log
+            echo "::endgroup::"
+          done
+          # Las comprobaciones avisan con WARNING 'FALLO: …' en vez de cortar: se buscan acá.
+          if grep -q 'FALLO' verify.log; then echo 'db/verify encontró fallos'; exit 1; fi
+
+      - name: sql/ como usuario NO superusuario (como avnadmin en Aiven)
+        run: |
+          psql -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+            create role vektora_app login password 'vektora_app' createrole;
+            create database vektora owner vektora_app;
+          SQL
+          # Las extensiones las crea el superusuario (en Aiven las habilita la plataforma).
+          psql -d vektora -v ON_ERROR_STOP=1 <<'SQL'
+            create schema extensions authorization vektora_app;
+            create extension if not exists vector with schema extensions;
+            create extension if not exists "uuid-ossp" with schema extensions;
+            create extension if not exists citext with schema extensions;
+          SQL
+
+      - name: Aplicar sql/ dos veces (idempotencia) y comprobar
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: vektora
+          DB_USER: vektora_app
+          DB_PASSWORD: vektora_app
+          DB_SSL: disable
+        run: |
+          npm run sql:aplicar
+          npm run sql:aplicar
+          npm run db:check
+          test "$(psql -d vektora -tAc 'select count(*) from public.project_tasks')" = "8"
+
+      - name: Pruebas de integración contra la base
+        env:
+          VEKTORA_TEST_DB: '1'
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: vektora
+          DB_USER: vektora_app
+          DB_PASSWORD: vektora_app
+          DB_SSL: disable
+        run: npm run test:integracion
