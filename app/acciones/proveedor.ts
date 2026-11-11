@@ -15,10 +15,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { errorMessage } from '@/lib/ai/errors';
-import { requireUserOrThrow } from '@/lib/auth/session';
+import { exigirPermiso, type SessionUser } from '@/lib/auth/session';
 import { consumirCuota } from '@/lib/cuotas';
 import { createProviderOnboarding } from '@/lib/providers';
+import { mensajeParaUsuario } from '@/lib/errores';
 import { validarTextoSustantivo } from '@/lib/validacion/entrada';
 
 const HabilidadSchema = z.object({
@@ -68,7 +68,12 @@ export async function registrarProveedor(
   _estadoPrevio: ResultadoAlta,
   formData: FormData,
 ): Promise<ResultadoAlta> {
-  const user = await requireUserOrThrow();
+  let user: SessionUser;
+  try {
+    user = await exigirPermiso('proveedor:perfil');
+  } catch (error) {
+    return { ok: false, error: mensajeParaUsuario(error), resoluciones: [] };
+  }
 
   // Las habilidades llegan como filas paralelas: slug[], nivel[], años[].
   const slugs = formData.getAll('skill_slug').filter((v): v is string => typeof v === 'string');
@@ -149,6 +154,6 @@ export async function registrarProveedor(
       })),
     };
   } catch (error) {
-    return { ok: false, error: errorMessage(error), resoluciones: [] };
+    return { ok: false, error: mensajeParaUsuario(error), resoluciones: [] };
   }
 }

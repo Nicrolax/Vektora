@@ -1,13 +1,12 @@
 /**
- * VEKTORA — Contratos de fila de `db/schema.sql`, tal como los devuelve PostgREST.
+ * VEKTORA — Contratos de fila de `db/schema.sql`.
  *
  * Reconstruidos el 2026-09-14 desde el volcado de catálogos de la base desplegada, no
  * desde la documentación. Si una columna no está aquí, no está en la base.
  *
- * Dos peculiaridades de PostgREST que estos tipos hacen explícitas en vez de dejar que
- * exploten en tiempo de ejecución:
- *   · `numeric` llega como STRING, no como number (por eso `PgNumeric`). Quien lea una de
- *     esas columnas debe normalizarla con `toNumber`.
+ * Dos peculiaridades que estos tipos hacen explícitas (las fija `lib/db/client.ts`):
+ *   · `numeric` llega como STRING, no como number (por eso `PgNumeric`): así no se pierde
+ *     precisión en importes. Quien lea una de esas columnas la normaliza con `toNumber`.
  *   · `vector(1536)` se escribe y se lee como el literal `'[0.1,0.2,…]'`, no como array.
  *
  * Los literales replican los ENUM del esquema: si cambian allí, cambian aquí.
@@ -93,7 +92,7 @@ export type { AiOperation, AiProviderId, AiRunStatus } from '@/lib/ai/types';
 /** Literal de pgvector: `[0.0123,-0.44,…]`. Lo produce `toPgVector`. */
 export type PgVector = string;
 
-/** `numeric` de PostgreSQL: PostgREST lo serializa como string. */
+/** `numeric` de PostgreSQL: `pg` lo entrega como string. */
 export type PgNumeric = number | string;
 
 // ---------------------------------------------------------------------------------------
@@ -402,7 +401,7 @@ export interface ProjectDagResult {
 // ---------------------------------------------------------------------------------------
 
 /**
- * Normaliza un `numeric` de PostgREST. Devuelve `null` si el valor es nulo o no numérico:
+ * Normaliza un `numeric` de PostgreSQL. Devuelve `null` si el valor es nulo o no numérico:
  * un NaN silencioso propagado a un cálculo de presupuesto es peor que un null explícito.
  */
 export function toNumber(value: PgNumeric | null | undefined): number | null {

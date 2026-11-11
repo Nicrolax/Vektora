@@ -1,7 +1,7 @@
 -- =========================================================================================
 -- VEKTORA · FASE 7 — Escalada del emparejamiento y cuotas de uso
 -- =========================================================================================
--- Depende de: db/schema.sql, migraciones 0002 a 0006.
+-- Depende de: db/schema.sql y las migraciones 0002 a 0005.
 -- Idempotente: se puede reaplicar sobre una base ya desplegada.
 --
 -- Resuelve dos formas de romper el sistema que no producen ningún error:

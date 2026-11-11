@@ -1,48 +1,103 @@
 # VEKTORA
 
-Plataforma autónoma de resultados: planificación y orquestación de proyectos por objetivos,
-grafos de tareas (DAG), matching híbrido y verificación por reputación de evidencia.
+Plataforma autónoma de resultados: una persona describe un objetivo, el sistema lo
+descompone en un grafo de tareas (DAG) con IA, adjudica cada tarea a un proveedor (matching
+híbrido con pgvector + reputación), un juez de IA evalúa lo entregado criterio por criterio y
+mueve reputación. **Ninguna persona decide nada en el ciclo.**
 
-Reglas del proyecto: **sistema 100 % autónomo** (sin gestión humana intermedia),
-**infraestructura 100 % gratuita** (free tiers de Supabase, Vercel, Groq y Google AI Studio),
-**sin mocks falsos** y **arquitectura separada por dominios**.
+Proyecto del año de **Programación Avanzada (UTU)** — Nicolás Bentancour, Agustín Perdomo,
+Matías Piñeyro y Thiago Rodríguez. Stack: Next.js 16 + TypeScript estricto + PostgreSQL 16 con
+pgvector, todo en servicios gratuitos.
 
-Estado: **COMPLETO.** Las siete fases están implementadas y verificadas: modelo de datos,
-capa de IA con respaldo, planificador, emparejamiento híbrido, evaluación automática,
-interfaz web y endurecimiento para producción.
+| Entorno | Base | App |
+|---|---|---|
+| Local (Nivel 1) | contenedor `pgvector/pgvector:pg16` | `docker compose up` |
+| Nube (Nivel 2) | **Aiven** PostgreSQL, conexión **SSL** | **Render** (Docker), **HTTPS** |
+| Taller (Nivel 3) | Deployment + PVC en **minikube** | Deployment + Service en minikube |
+
+Guía paso a paso: [`docs/guia-despliegue.md`](docs/guia-despliegue.md).
 
 ---
 
-## Arranque
+## Arranque rápido (Docker)
 
 ```bash
-npm install
-cp env.example .env.local     # y rellena las claves
-npm run verify                # typecheck estricto + 315 pruebas
-npm run dev                   # la aplicación web en http://localhost:3000
-npm run db:check              # comprueba que Supabase tiene el esquema aplicado
-npm run ai:models             # qué modelos admiten tus claves (los modelos caducan)
-npm run ai:check              # comprueba la capa de IA contra las APIs reales
-npm run plan -- "Micrositio de captación con formulario y analítica" 3000
+cp .env.example .env            # completar POSTGRES_*, AUTH_SECRET y CRON_SECRET
+docker compose up --build -d    # base + app; la base se carga sola con sql/
+docker compose ps               # db y app "healthy"
 ```
 
-## Despliegue de la base de datos
+Abrir <http://localhost:3000> y entrar con una cuenta de prueba (contraseña **pública**
+`Demo-Vektora-2026`, solo existe en los datos de prueba):
 
-El orden importa: cada paso depende del anterior.
+| Cuenta | Rol | Para mostrar |
+|---|---|---|
+| `cliente@vektora.test` | cliente | proyecto demo con su grafo, búsqueda, reportes, gestionar proyecto |
+| `sofia.diseno@vektora.test` | proveedora | tiene **T-02 asignada**: la entrega transaccional |
+| `ambos@vektora.test` | cliente y proveedor | dueño del proyecto público de recetas |
+| `lucia.frontend@`, `diego.backend@`, `martin.qa@vektora.test` | proveedores | candidatos del matching |
 
-1. `db/schema.sql`
-2. `db/migrations/0002_planner.sql`
-3. `db/migrations/0003_provider_onboarding.sql`
-4. `db/migrations/0004_matching.sql`
-5. `db/migrations/0005_qa.sql`
-6. `db/migrations/0006_realtime.sql`
-7. `db/migrations/0007_escalada.sql`
-8. `db/seeds/01_skills.sql`
-9. `npm run skills:embed` — vectoriza el catálogo (sin esto no hay normalización semántica)
+La cuenta **admin** no está en los datos (su contraseña no puede ser pública). Se crea así:
 
-Todos son **idempotentes**: se pueden reaplicar sobre una base ya desplegada sin
-destruir datos. `npm run db:check` verifica después que todo lo que el código necesita está
-presente. Los detalles del modelo están en `db/LEEME.md`.
+```bash
+ADMIN_EMAIL=admin@ejemplo.com ADMIN_PASSWORD='al-menos-12-caracteres' npm run cuenta:admin
+```
+
+Sin Docker: `npm ci`, un PostgreSQL 16 con pgvector, los `DB_*` en `.env`,
+`npm run sql:aplicar` y `npm run dev`.
+
+## Requisitos del examen (R1–R12)
+
+| | Requisito | Dónde está |
+|---|---|---|
+| **R1** | ≥ 4 entidades con PK/FK, 1:N y N:M | `db/schema.sql`: 14 tablas. 1:N `users → projects → project_tasks`. N:M `provider_profiles ↔ skills` (`provider_skills`), tarea ↔ tarea (`task_dependencies`, el DAG), proveedor ↔ tarea (`task_applications`) |
+| **R2** | CRUD en ≥ 3 entidades | **Proyectos**: crear (`app/acciones/proyectos.ts` → planificador), leer, editar/pausar/cancelar/eliminar (`lib/proyectos`, `/proyectos/[id]/gestionar`). **Cuentas**: alta (`/entrar`), listar, cambiar rol, suspender, borrar (`lib/admin`, `/admin/cuentas`). **Skills**: alta, listar, editar, borrar (`/admin/skills`). **Perfil de proveedor**: alta y edición (`/proveedor/alta`) |
+| **R3** | Login, hash BCrypt, ≥ 2 roles | `lib/auth/password.ts` (bcrypt coste 12), `lib/auth/servicio.ts`, `lib/auth/token.ts` (cookie JWT HS256 `httpOnly`), roles `client`/`provider`/`both`/`admin` en `lib/auth/permisos.ts`; páginas con `requirePermiso()`, acciones con `exigirPermiso()`; la base lo refuerza con RLS |
+| **R4** | Capas modelo / DAO / servicio / presentación con interfaces | Modelo: `lib/db/types.ts` y esquemas Zod. DAO: interfaces `*Repository`/`*Dao` con su implementación `Postgres*` (`lib/planner/repository.ts`, `lib/auth/repository.ts`, `lib/entregas`, `lib/proyectos`…) y `lib/consultas`. Servicio: `AuthService`, `ProyectosService`, `EntregasService`, `AdminService`, `ProjectPlanner`, `TaskMatcher`, `QaJudge`. Presentación: `app/` |
+| **R5** | Herencia + interfaz con 2 implementaciones | Herencia: `VektoraError` (abstracta) ← `ValidacionError`, `DatabaseError` ← `PlannerRepositoryError`… (`lib/errores`). Interfaces: `LlmProvider` → `GroqProvider`, `GeminiProvider`; `TelemetrySink` → `PostgresTelemetrySink`, `NullTelemetrySink`, `InMemoryTelemetrySink`; cada `*Repository` → Postgres + en memoria (pruebas) |
+| **R6** | Búsqueda con filtros + JOIN + reporte COUNT/SUM/AVG + GROUP BY | `lib/consultas/busqueda.ts` (`/buscar`: texto, estado, skill, rango de presupuesto, sin asignar; JOIN a proyectos y perfiles). `lib/consultas/reporte.ts` (`/reportes`: por proyecto, por estado, por proveedor) |
+| **R7** | Transacción sobre ≥ 2 tablas con commit y rollback | `lib/db/client.ts` → `transaction()`. `lib/entregas` → entregar = `SELECT … FOR UPDATE` + INSERT `deliverables` + UPDATE `project_tasks` + INSERT `audit_logs`, todo o nada. Probado en `tests/integracion/base.test.ts` (rollback ante falla) |
+| **R8** | Validaciones, excepción propia, sin errores internos visibles | Zod + validaciones de dominio (`lib/validacion`, `validar*`). `lib/errores`: `mensajeParaUsuario()` es el único camino de un error a la interfaz; los internos se registran y la persona ve un mensaje genérico |
+| **R9** | Consultas preparadas | `lib/db/client.ts`: la ÚNICA forma de ejecutar SQL es `query(texto, [parámetros])` con `$1, $2…` (equivalente a `PreparedStatement`). Probado con un intento de inyección en las pruebas de integración |
+| **R10** | Conexión por variables de entorno | `lib/db/config.ts`: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSL`, `DB_SSL_CA`, `DB_POOL_MAX` |
+| **R11** | Script de tablas + script con ≥ 20 registros | `sql/01-crear-tablas.sql` y `sql/02-datos-prueba.sql` (generados desde `db/` con `npm run sql:build`; 30 skills, 6 cuentas, 2 proyectos, 8 tareas, 7 dependencias, candidaturas, entrega, reputación) |
+| **R12** | `/health` | `app/health/route.ts`: 200 si la app y la base (`select 1` < 3 s) responden, 503 si no |
+
+## Estructura del repositorio
+
+La consigna pide el código en `src/`. En Next.js el código vive en carpetas con nombre fijo,
+así que **`src/` equivale a `app/` + `lib/` + `components/`**:
+
+```
+app/          presentación: páginas, Server Actions (app/acciones), /health, /api
+lib/          dominio, servicios y acceso a datos (uno por carpeta, ver «Arquitectura»)
+components/   componentes de interfaz
+db/           SQL fuente, por fase (00_plataforma, schema, migrations, seeds, verify)
+sql/          01-crear-tablas.sql y 02-datos-prueba.sql (GENERADOS desde db/)
+scripts/      CLIs: sql:aplicar, db:check, cuenta:admin, el ciclo autónomo…
+tests/        Vitest: unitarias y tests/integracion (contra PostgreSQL real)
+Dockerfile · docker-compose.yml · .env.example
+k8s/          manifiestos de Kubernetes (Nivel 3, fase 4 del examen)
+docs/         guía de despliegue (y, en las fases 5 y 6, informe de seguridad y diagramas)
+.github/      CI, imagen en ghcr.io
+```
+
+## La base de datos
+
+La base es PostgreSQL común (antes de la versión 0.4 era Supabase). Lo que Supabase daba
+hecho lo crea `db/00_plataforma.sql`: el esquema `auth` con `auth.users.password_hash`,
+`auth.uid()` y los roles `anon` / `authenticated` / `service_role`.
+
+- **Dos identidades.** La app se conecta como el dueño de las tablas: así operan los agentes
+  autónomos, el login y la telemetría. Para leer como una persona, `getDb().asUser(id, …)`
+  abre una transacción con `SET LOCAL ROLE authenticated` y fija `request.jwt.claim.sub`:
+  `auth.uid()` vale ese id y las 48 políticas RLS se aplican igual que antes.
+- **Orden de los scripts.** `00_plataforma → schema → 0002 … 0005, 0007 → seeds/01_skills →
+  seeds/02_datos_demo`. Ya están concatenados en `sql/` (`npm run sql:build`; `sql:check`
+  falla en CI si alguien los editó a mano). Todos son idempotentes.
+- **Comprobación.** `npm run db:check` revisa la conexión (y si va por SSL), extensiones,
+  plataforma, tablas, columnas, funciones, RLS y datos. `db/verify/` prueba el
+  comportamiento del SQL (DAG, ciclos, matching, juez, cuotas, RLS) y corre en CI.
 
 ---
 
@@ -50,11 +105,11 @@ presente. Los detalles del modelo están en `db/LEEME.md`.
 
 Todo el código de dominio vive bajo `lib/`, y se importa con el alias `@/`. Ningún módulo
 importa archivos internos de otro dominio: se importa desde el índice público (`@/lib/ai`,
-`@/lib/planner`, `@/lib/supabase`).
+`@/lib/planner`, `@/lib/db`).
 
 ```
 lib/
-  env.ts                     Carga de .env.local para procesos que no son Next.js
+  env.ts                     Carga de .env / .env.local para procesos que no son Next.js
   ai/                        FASE 2 — capa de abstracción de IA
     index.ts                 API pública
     ai-client.ts             Orquestador: fallback, reintentos, auto-reparación Zod
@@ -66,7 +121,7 @@ lib/
     pricing.ts               Estimación de cost_usd (0 en free tier, tabla extensible)
     embedding-models.ts      Registro de capacidades de los modelos de embedding
     embeddings.ts            Servicio de embeddings + utilidades de pgvector
-    telemetry.ts             Sinks de ai_runs: Supabase / null / en memoria
+    telemetry.ts             Sinks de ai_runs: PostgreSQL / null / en memoria
     providers/
       index.ts               Construcción de la cadena de fallback
       http.ts                fetch con timeout, señal combinada y traducción de estado
@@ -80,19 +135,19 @@ lib/
     schemas.ts               Contrato Zod del plan, con los invariantes del DAG dentro
     prompts.ts               System prompt, catálogo de skills y refuerzo de grafo
     budget.ts                Reparto por resto mayor, exacto al céntimo
-    repository.ts            Interfaz de datos + implementación Supabase
+    repository.ts            Interfaz de datos (DAO) + implementación PostgreSQL
   providers/                 FASE 3.5 — onboarding y catálogo vivo de skills
     index.ts                 API pública + createProviderOnboarding()
     provider.ts              Alta completa: cuenta, perfiles, skills, vectorización
     skills.ts                Resolución en cascada: exacta -> alias -> semántica -> creación
     schemas.ts               Contrato Zod del alta
-    repository.ts            Interfaz de datos + implementación Supabase
+    repository.ts            Interfaz de datos (DAO) + implementación PostgreSQL
   matching/                  FASE 4 — motor de matching híbrido
     index.ts                 API pública + createTaskMatcher()
     matcher.ts               Orquestación: vectorizar, recuperar, puntuar, persistir, adjudicar
     scoring.ts               Ranking PURO: vector + skills + reputación
     config.ts                Pesos y umbrales validados con Zod
-    repository.ts            Interfaz de datos + implementación Supabase
+    repository.ts            Interfaz de datos (DAO) + implementación PostgreSQL
   qa/                        FASE 5 — agente autónomo de QA (AI Judge)
     index.ts                 API pública + createQaJudge()
     judge.ts                 Orquestación: tomar turno, evaluar, decidir, persistir
@@ -100,35 +155,42 @@ lib/
     schemas.ts               Contrato Zod construido con los criterios REALES de la tarea
     prompts.ts               Prompt del juez, sin identidad ni reputación del proveedor
     config.ts                Umbrales y deltas validados con Zod
-    repository.ts            Interfaz de datos + implementación Supabase
-  qa/                        FASE 5 — agente autónomo de evaluación
-    index.ts                 API pública + createQaJudge()
-    judge.ts                 Orquestación: tomar turno, evaluar, decidir, persistir
-    policy.ts                Veredicto PURO: criterios -> estado, nota, reputación
-    schemas.ts               Contrato Zod con los criterios REALES de la tarea
-    prompts.ts               Prompt del juez, sin identidad ni reputación del proveedor
-    config.ts                Umbrales y deltas validados con Zod
-    repository.ts            Interfaz de datos + implementación Supabase
-  auth/session.ts            FASE 6 — guardián de sesión
+    repository.ts            Interfaz de datos (DAO) + implementación PostgreSQL
+  db/                        0.4 — acceso a PostgreSQL (R7, R9, R10)
+    client.ts                query() parametrizada, transaction(), asUser() con RLS
+    config.ts                DB_* desde el entorno, SSL con el CA de Aiven
+    types.ts                 Contratos de fila de db/schema.sql
+  auth/                      0.4 — login propio (R3)
+    password.ts              BCrypt coste 12
+    token.ts                 Cookie de sesión: JWT HS256 con node:crypto
+    cookie.ts                httpOnly, SameSite=Lax, Secure detrás de HTTPS
+    permisos.ts              Tabla rol -> permisos
+    repository.ts            DAO de cuentas (auth.users + public.users)
+    servicio.ts              AuthService: entrar, registrarse, asegurarAdmin
+    session.ts               requireUser / requirePermiso / exigirPermiso
+  errores/                   0.4 — jerarquía de excepciones y mensajeParaUsuario() (R5, R8)
+  consultas/                 0.4 — lecturas de las páginas con RLS, búsqueda y reporte (R6)
+  proyectos/                 0.4 — ProyectosService: editar, estado, eliminar (R2)
+  entregas/                  0.4 — EntregasService: la transacción de la entrega (R7)
+  admin/                     0.4 — AdminService: cuentas y catálogo de skills (R2)
   cron/autorizacion.ts       FASE 6 — secreto de los trabajos programados
   cuotas/index.ts            FASE 7 — límites de uso por usuario
   validacion/entrada.ts      FASE 7 — correos, textos y presupuestos con contenido real
-  supabase/
-    index.ts                 API pública
-    admin.ts                 Cliente service_role, único y perezoso
-    server.ts                Cliente con la sesión del usuario, sujeto a RLS
-    browser.ts               Cliente anónimo para la suscripción en vivo
-    types.ts                 Contratos de fila de db/schema.sql
 
 app/                         FASE 6 — interfaz web (Next.js App Router)
   entrar/                    Alta y acceso
+  health/                    /health (R12)
   (app)/panel/               Proyectos del cliente
-  (app)/proyectos/           Creación y visualizador del grafo
+  (app)/proyectos/           Creación, visualizador del grafo y gestión (editar/eliminar)
   (app)/tareas/[id]/         Criterios, candidaturas y veredictos
   (app)/trabajo/[taskId]/    Espacio de entrega del proveedor
   (app)/proveedor/           Panel y alta de proveedor
-  acciones/                  Server Actions sobre los orquestadores de lib/
-  api/cron/                  Disparadores de los trabajos programados
+  (app)/buscar/              Búsqueda de tareas con filtros (R6)
+  (app)/reportes/            Reporte con agregaciones (R6)
+  (app)/admin/               Cuentas y catálogo de skills (solo admin)
+  acciones/                  Server Actions sobre los servicios de lib/
+  api/cron/                  Disparadores de los agentes autónomos
+  api/proyectos/[id]/firma   Sondeo de cambios del grafo (cada 15 s)
 
 components/
   grafo/                     Visualizador SVG y disposición PURA
@@ -136,20 +198,24 @@ components/
   estados.ts                 Vocabulario visual de los estados
 
 db/
+  00_plataforma.sql          0.4 — auth.users (hash BCrypt), auth.uid(), roles
   schema.sql                 FASE 1 — 14 ENUM, 14 tablas, triggers, índices, RLS, privilegios
   migrations/0002_planner.sql  FASE 3 — apply_project_plan, refresh_task_readiness, project_dag
   migrations/0003_provider_onboarding.sql  FASE 3.5 — resolve_or_create_skill, skill_aliases
   migrations/0004_matching.sql  FASE 4 — match_task_candidates, apply_task_matches, accept_task_application
   migrations/0005_qa.sql     FASE 5 — claim_deliverable_for_qa, apply_qa_verdict, pending_qa_deliverables
-  migrations/0006_realtime.sql  FASE 6 — publicación de cambios en vivo
   migrations/0007_escalada.sql  FASE 7 — rondas de emparejamiento y cuotas de uso
   verify/                    Verificación de comportamiento sobre base local desechable
   seeds/01_skills.sql        Catálogo semilla de skills
+  seeds/02_datos_demo.sql    Cuentas, proyectos y tareas de la demo
   diagnose.sql · dump-schema.sql · dump-skills.sql   Diagnóstico (solo lectura)
 
 scripts/
   ai-check.ts                Verificación de la capa de IA contra las APIs reales
-  db-check.ts                Verificación del despliegue de Supabase
+  db-check.ts                npm run db:check — conexión, SSL, esquema, RLS y datos
+  sql-build.ts               npm run sql:build / sql:check — genera sql/ desde db/
+  sql-aplicar.ts             npm run sql:aplicar — carga sql/ en la base de DB_* (Aiven)
+  cuenta-admin.ts            npm run cuenta:admin — crea o asciende la cuenta admin
   plan-project.ts            npm run plan -- "<objetivo>" [presupuesto]
   skills-embed.ts            Vectoriza el catálogo de skills
   provider-add.ts            npm run provider:add -- <perfil.json>
@@ -186,8 +252,8 @@ tests/                       Suite de Vitest del núcleo (sin red, sin base de d
   `gemini-embedding-001` recortado por MRL y **renormalizado L2**, para que `<=>` de pgvector
   siga siendo distancia coseno. Los índices HNSW son **parciales**: las consultas de la
   FASE 4 deben incluir `where embedding is not null` y ordenar por `<=>` o no se usarán.
-- **`service_role` bypassea RLS por diseño**: es la identidad de los agentes autónomos.
-  `lib/supabase/admin.ts` lanza si se importa en el navegador.
+- **El dueño de las tablas no está sujeto a RLS**: es la identidad de los agentes
+  autónomos. Las páginas leen con `asUser`, que sí lo está. `pg` solo existe en el servidor.
 - **`reputation_events` y `audit_logs` son append-only.** La reputación mostrada tiene que
   poder reconstruirse sumando eventos (`delta * weight`), o deja de ser un mecanismo de
   confianza.
@@ -241,11 +307,10 @@ tests/                       Suite de Vitest del núcleo (sin red, sin base de d
 - **La reputación es un libro mayor append-only**, así que el guardia contra el doble cobro
   es previo al INSERT: no se emite un `event_type` que ese entregable ya generó. Un
   veredicto posterior que contradiga a otro AÑADE el evento contrario en vez de borrar.
-- **La clave `service_role` nunca llega al navegador.** Las páginas leen con la sesión del
-  usuario y clave anónima, así que todo pasa por las 44 políticas de acceso: si una consulta
-  no devuelve una fila es porque la base no deja verla, no porque el código se acordó de
-  filtrar. Solo las acciones de servidor usan privilegios plenos, y siempre tras validar la
-  sesión.
+- **Las páginas leen como la persona.** `lib/consultas` usa `asUser`, así que todo pasa por
+  las políticas de acceso: si una consulta no devuelve una fila es porque la base no deja
+  verla, no porque el código se acordó de filtrar. Solo las acciones de servidor y los
+  agentes operan como dueños de las tablas, y siempre tras validar la sesión y el permiso.
 - **Las cuotas se cuentan en la base, no en el proceso.** Es el único sitio donde el recuento
   es atómico: dos pestañas pulsando a la vez no pueden consumir el mismo hueco. Si el
   contador falla, se PERMITE la acción — el límite protege una cuota, no custodia nada
@@ -262,8 +327,12 @@ tests/                       Suite de Vitest del núcleo (sin red, sin base de d
 |---|---|
 | `npm run typecheck` | `tsc --noEmit` con `strict`, `noUncheckedIndexedAccess` y `exactOptionalPropertyTypes` |
 | `npm test` | Suite de Vitest del núcleo |
-| `npm run verify` | typecheck + pruebas |
-| `npm run db:check` | Comprueba tablas, columnas, RPC, catálogo y propietario en Supabase |
+| `npm run verify` | typecheck + pruebas + `sql:check` |
+| `npm run test:integracion` | Pruebas contra PostgreSQL real (`VEKTORA_TEST_DB=1` y los `DB_*`) |
+| `npm run sql:build` / `sql:check` | Genera `sql/` desde `db/` / falla si no está al día |
+| `npm run sql:aplicar` | Ejecuta `sql/` contra la base de `DB_*` (así se carga Aiven) |
+| `npm run cuenta:admin` | Crea o asciende la cuenta admin (`ADMIN_EMAIL`, `ADMIN_PASSWORD`) |
+| `npm run db:check` | Conexión (y SSL), extensiones, plataforma, tablas, funciones, RLS y datos |
 | `npm run ai:models` | Lista los modelos que admiten tus claves y marca si el configurado ya no existe |
 | `npm run ai:check` | Comprueba configuración, generación, fallback y embeddings contra las APIs reales |
 | `npm run skills:embed` | Vectoriza el catálogo de skills (`--all` recalcula todo) |
@@ -275,28 +344,24 @@ tests/                       Suite de Vitest del núcleo (sin red, sin base de d
 | `npm run plan -- "<objetivo>" [presupuesto]` | Planifica un proyecto real de punta a punta |
 | `npm run dev` | Levanta la aplicación web en desarrollo |
 | `npm run build` | Compilación de producción |
-| `npm run cron` | Dispara emparejamiento y evaluación en local (en producción lo hace el reloj de Vercel) |
+| `npm run cron` | Dispara emparejamiento y evaluación contra la app en marcha |
 
 ## Variables de entorno
 
-Todas están documentadas en `env.example`. Las obligatorias son `SUPABASE_URL`,
-`SUPABASE_SERVICE_ROLE_KEY` y al menos una de `GROQ_API_KEY` / `GOOGLE_AI_API_KEY`.
-`VEKTORA_OWNER_ID` es opcional: si se define, debe ser el uuid de una fila existente de
-`public.users`, y `npm run plan` lo verifica antes de gastar una llamada al modelo.
-`VEKTORA_SKILL_MATCH_THRESHOLD` también es opcional (0.95, **medido**): baja el valor para
-agrupar más agresivamente, súbelo para que el catálogo crezca con más facilidad. Los
-umbrales del juez (`VEKTORA_QA_*`) son política de producto y están documentados uno a uno
-en `env.example`.
+Todas están en [`.env.example`](.env.example), solo con los nombres. Las obligatorias son los
+`DB_*` (o los `POSTGRES_*` con docker compose), `AUTH_SECRET` (≥ 32 caracteres) y
+`CRON_SECRET`. Para crear proyectos hace falta al menos una de `GROQ_API_KEY` /
+`GOOGLE_AI_API_KEY`; sin ellas la demo con los datos de prueba funciona igual. Los umbrales
+`VEKTORA_*` están medidos y documentados uno a uno.
 
-`.env.local` **nunca** se versiona: contiene la clave `service_role`.
+`.env` **nunca** se versiona (está en `.gitignore` y en `.dockerignore`).
 
 ---
 
 ## Documentación
 
-`docs/` contiene el desarrollo teórico, los requisitos, el stack, los diagramas UML, los
-casos de uso, la infraestructura y la guía de despliegue. Empezar por
-[`docs/00-indice.md`](docs/00-indice.md).
+- [`docs/guia-despliegue.md`](docs/guia-despliegue.md) — Docker, Aiven, Render y minikube, paso a paso.
+- [`docs/00-indice.md`](docs/00-indice.md) — desarrollo teórico, requisitos, stack, diagramas y casos de uso.
 
 La documentación técnica de cada fase —decisiones de diseño, errores encontrados y cómo se
 corrigieron— vive en el espacio de trabajo del proyecto.

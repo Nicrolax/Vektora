@@ -87,12 +87,16 @@ describe('loadAiConfig', () => {
     expect(loadAiConfig({ ...base, AI_LOG_PAYLOADS: '1' }).AI_LOG_PAYLOADS).toBe(true);
   });
 
-  it('la telemetría solo está configurada con URL y clave de servicio', () => {
+  it('la telemetría solo está configurada con los datos de conexión a PostgreSQL', () => {
     expect(isTelemetryConfigured(loadAiConfig(base))).toBe(false);
+    const sinPassword = loadAiConfig({ ...base, DB_HOST: 'db', DB_NAME: 'vektora', DB_USER: 'vektora' });
+    expect(isTelemetryConfigured(sinPassword)).toBe(false);
     const withDb = loadAiConfig({
       ...base,
-      SUPABASE_URL: 'https://proyecto.supabase.co',
-      SUPABASE_SERVICE_ROLE_KEY: 'service-key',
+      DB_HOST: 'db',
+      DB_NAME: 'vektora',
+      DB_USER: 'vektora',
+      DB_PASSWORD: 'prueba',
     });
     expect(isTelemetryConfigured(withDb)).toBe(true);
   });

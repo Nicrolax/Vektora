@@ -14,16 +14,25 @@ el nombre vive en `profiles`. Aplicar aquel archivo habría roto la base.
 
 ## Orden de despliegue
 
+Ya concatenado en `sql/01-crear-tablas.sql` (1–7) y `sql/02-datos-prueba.sql` (8–9) con
+`npm run sql:build`. Se aplica con `npm run sql:aplicar` (o solo, por initdb, en Docker).
+
 | # | Archivo | Contenido |
 |---|---|---|
-| 1 | `schema.sql` | 14 ENUM, 14 tablas, triggers de ciclo e integridad, 60 índices (2 HNSW), helpers de autorización, 44 políticas RLS, privilegios |
-| 2 | `migrations/0002_planner.sql` | `refresh_task_readiness`, `propagate_task_readiness`, `apply_project_plan`, `register_skills`, `project_dag` |
-| 3 | `migrations/0003_provider_onboarding.sql` | `skills.embedding`, `skill_aliases`, `normalize_skill_slug`, `resolve_or_create_skill`, `upsert_provider_profile`, `set_provider_skills` |
-| 4 | `migrations/0004_matching.sql` | `match_task_candidates`, `apply_task_matches`, `accept_task_application`, `skill_similarity_pairs` |
-| 5 | `seeds/01_skills.sql` | Catálogo semilla: 30 skills en 9 categorías |
-| 6 | `npm run skills:embed` | Vectoriza el catálogo. Sin esto no hay resolución semántica. |
+| 1 | `00_plataforma.sql` | Lo que antes daba Supabase: esquema `auth`, `auth.users` con `password_hash` BCrypt, `auth.uid()`, roles `anon` / `authenticated` / `service_role` y la membresía para `SET ROLE` |
+| 2 | `schema.sql` | 14 ENUM, 14 tablas, triggers de ciclo e integridad, índices (2 HNSW), helpers de autorización, políticas RLS, privilegios |
+| 3 | `migrations/0002_planner.sql` | `refresh_task_readiness`, `propagate_task_readiness`, `apply_project_plan`, `register_skills`, `project_dag` |
+| 4 | `migrations/0003_provider_onboarding.sql` | `skills.embedding`, `skill_aliases`, `normalize_skill_slug`, `resolve_or_create_skill`, `upsert_provider_profile`, `set_provider_skills` |
+| 5 | `migrations/0004_matching.sql` | `match_task_candidates`, `apply_task_matches`, `accept_task_application`, `skill_similarity_pairs` |
+| 6 | `migrations/0005_qa.sql` | `claim_deliverable_for_qa`, `release_deliverable_qa`, `apply_qa_verdict`, `pending_qa_deliverables` |
+| 7 | `migrations/0007_escalada.sql` | `matching_rounds`, `bump_matching_round`, `usage_events`, `consume_quota`, `quota_usage` |
+| 8 | `seeds/01_skills.sql` | Catálogo semilla: 30 skills en 9 categorías |
+| 9 | `seeds/02_datos_demo.sql` | Datos de la demo: 6 cuentas (contraseña pública), 2 proyectos, 8 tareas, candidaturas, entrega, reputación |
+| — | `npm run skills:embed` | Vectoriza el catálogo (necesita `GOOGLE_AI_API_KEY`). Sin esto no hay resolución semántica |
 
-Los tres son idempotentes: reaplicarlos sobre una base al día no cambia nada.
+(La `0006_realtime.sql` de Supabase se eliminó: la vista del grafo ahora sondea cada 15 s.)
+
+Todos son idempotentes: reaplicarlos sobre una base al día no cambia nada.
 
 Verificación posterior: `npm run db:check`.
 

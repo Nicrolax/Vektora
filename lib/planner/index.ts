@@ -7,14 +7,14 @@
  *     create: { ownerId, objective: 'Micrositio de captación…', budgetTotal: 3000 },
  *   });
  *
- * Sin argumentos usa el repositorio Supabase con el cliente `service_role`. Inyectando
+ * Sin argumentos usa el repositorio PostgreSQL con la identidad de los agentes. Inyectando
  * `repository` (y opcionalmente `ai` / `embeddings`) se prueba todo el planificador sin
  * red ni base de datos.
  */
 
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getDb } from '@/lib/db';
 import { ProjectPlanner, type ProjectPlannerOptions } from './planner';
-import { SupabasePlannerRepository } from './repository';
+import { PostgresPlannerRepository } from './repository';
 
 // --- Orquestador ---------------------------------------------------------------------
 export { PlannerError, ProjectPlanner, normalizeSkillSlugs, renderTaskForEmbedding, residualCycles } from './planner';
@@ -80,7 +80,7 @@ export { allocateBudget, normalizeShares } from './budget';
 export type { BudgetAllocation, BudgetSlice } from './budget';
 
 // --- Repositorio ---------------------------------------------------------------------
-export { PlannerRepositoryError, SupabasePlannerRepository } from './repository';
+export { PlannerRepositoryError, PostgresPlannerRepository } from './repository';
 export type {
   ApplyPlanResult,
   CreateProjectInput,
@@ -93,13 +93,13 @@ export type {
 
 /**
  * Construye un planificador listo para usar.
- * Sin `repository` se usa Supabase con `service_role`, que es la identidad con la que
- * corren los agentes autónomos.
+ * Sin `repository` se usa PostgreSQL como dueño de las tablas, que es la identidad con la
+ * que corren los agentes autónomos.
  */
 export function createProjectPlanner(
   options: Partial<ProjectPlannerOptions> = {},
 ): ProjectPlanner {
-  const repository = options.repository ?? new SupabasePlannerRepository(getSupabaseAdmin());
+  const repository = options.repository ?? new PostgresPlannerRepository(getDb());
   return new ProjectPlanner({
     repository,
     ...(options.ai === undefined ? {} : { ai: options.ai }),

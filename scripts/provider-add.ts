@@ -8,7 +8,7 @@
  * interfaz, llamará a `createProviderOnboarding().register(...)` con este mismo objeto.
  * No hay dos caminos de alta, hay uno con dos envoltorios.
  *
- * Requiere que la cuenta ya exista en `public.users` (se crea en Supabase Auth y el trigger
+ * Requiere que la cuenta ya exista en `public.users` (se crea desde /entrar y el trigger
  * del bootstrap la proyecta). No imprime ninguna clave.
  */
 

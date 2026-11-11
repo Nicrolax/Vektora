@@ -17,7 +17,7 @@ import '@/lib/env';
 import { errorMessage } from '@/lib/ai/errors';
 import { getMatchingConfig } from '@/lib/matching';
 import { createTaskMatcher } from '@/lib/matching';
-import { getSupabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase/admin';
+import { cerrarDb, dbConfigurada, getDb } from '@/lib/db';
 
 function line(label: string, value: string): void {
   console.log(`  ${label.padEnd(24)} ${value}`);
@@ -27,21 +27,22 @@ async function listPendingTasks(): Promise<void> {
   // Se listan TODAS las tareas sin asignar, no solo las `ready`: si el DAG dejó todo en
   // `blocked` esperando dependencias, decir "no hay tareas" sería engañoso — las hay, y lo
   // que falta es aprobar las de arriba.
-  const { data, error } = await getSupabaseAdmin()
-    .from('project_tasks')
-    .select('id, code, title, status, required_skills, budget, projects!inner(title)')
-    .is('assignee_id', null)
-    .in('status', ['blocked', 'ready', 'open', 'matching'])
-    .order('created_at', { ascending: true })
-    .limit(40);
-
-  if (error !== null) {
-    console.error(`\nNo se pudieron leer las tareas -> ${error.message}\n`);
+  let rows: Array<Record<string, unknown>>;
+  try {
+    rows = await getDb().query(
+      `select t.id, t.code, t.title, t.status, t.required_skills, t.budget, p.title as project_title
+         from public.project_tasks t
+         join public.projects p on p.id = t.project_id
+        where t.assignee_id is null and t.status in ('blocked', 'ready', 'open', 'matching')
+        order by t.created_at
+        limit 40`,
+    );
+  } catch (error) {
+    console.error(`\nNo se pudieron leer las tareas -> ${errorMessage(error)}\n`);
     process.exitCode = 1;
     return;
   }
 
-  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
   if (rows.length === 0) {
     console.log(
       '\nNo hay ninguna tarea sin asignar. Crea un proyecto con:\n' +
@@ -56,10 +57,7 @@ async function listPendingTasks(): Promise<void> {
 
   console.log('\nTareas sin asignar:\n');
   for (const row of rows) {
-    const project = row['projects'];
-    const projectTitle = Array.isArray(project)
-      ? String((project[0] as { title?: unknown })?.title ?? '')
-      : String((project as { title?: unknown } | null)?.title ?? '');
+    const projectTitle = String(row['project_title'] ?? '');
     const skills = Array.isArray(row['required_skills'])
       ? (row['required_skills'] as string[]).join(',')
       : '';
@@ -73,7 +71,7 @@ async function listPendingTasks(): Promise<void> {
     console.log(
       '\nTodas están en `blocked`: esperan a que se apruebe alguna dependencia del DAG.\n' +
         'Solo las `ready`, `open` o `matching` se pueden emparejar.\n\n' +
-        'Para desbloquear la raíz del grafo puedes aprobarla a mano en Supabase:\n' +
+        'Para desbloquear la raíz del grafo puedes aprobarla a mano con psql:\n' +
         "  update public.project_tasks set status = 'approved' where id = '<task_id>';\n" +
         'El trigger `refresh_task_readiness` pasará sus dependientes a `ready` solo.\n',
     );
@@ -91,44 +89,36 @@ async function listPendingTasks(): Promise<void> {
  * ninguno es elegible" son diagnósticos muy distintos.
  */
 async function explainNoCandidates(taskId: string, includeManualOnly: boolean): Promise<void> {
-  const client = getSupabaseAdmin();
+  const db = getDb();
 
-  const task = await client
-    .from('project_tasks')
-    .select('budget, projects!inner(owner_id)')
-    .eq('id', taskId)
-    .maybeSingle();
-  if (task.error !== null || task.data === null) return;
-
-  const row = task.data as unknown as Record<string, unknown>;
-  const project = row['projects'];
-  const ownerId = String(
-    (Array.isArray(project) ? project[0] : project as { owner_id?: unknown } | null)?.owner_id ?? '',
+  const task = await db.one<{ budget: string | null; owner_id: string }>(
+    `select t.budget, p.owner_id
+       from public.project_tasks t
+       join public.projects p on p.id = t.project_id
+      where t.id = $1`,
+    [taskId],
   );
-  const budget = row['budget'] === null ? null : Number(row['budget']);
+  if (task === null) return;
+  const ownerId = task.owner_id;
+  const budget = task.budget === null ? null : Number(task.budget);
 
-  const profiles = await client
-    .from('provider_profiles')
-    .select('id, user_id, headline, is_active, accepts_auto_assign, min_task_budget_usd');
-  if (profiles.error !== null) return;
-
-  const all = (profiles.data ?? []) as Array<{
+  const all = await db.query<{
     id: string;
     user_id: string;
     headline: string | null;
     is_active: boolean;
     accepts_auto_assign: boolean;
     min_task_budget_usd: number | string | null;
-  }>;
-
-  const resolved = await client
-    .from('task_applications')
-    .select('provider_id')
-    .eq('task_id', taskId)
-    .in('status', ['accepted', 'rejected', 'withdrawn', 'expired']);
-  const excludedByApplication = new Set(
-    ((resolved.data ?? []) as Array<{ provider_id: string }>).map((entry) => entry.provider_id),
+  }>(
+    'select id, user_id, headline, is_active, accepts_auto_assign, min_task_budget_usd from public.provider_profiles',
   );
+
+  const resolved = await db.query<{ provider_id: string }>(
+    `select provider_id from public.task_applications
+      where task_id = $1 and status in ('accepted', 'rejected', 'withdrawn', 'expired')`,
+    [taskId],
+  );
+  const excludedByApplication = new Set(resolved.map((entry) => entry.provider_id));
 
   console.log('[2b] Por qué no hubo candidatos');
   line('perfiles de proveedor:', String(all.length));
@@ -171,8 +161,8 @@ async function explainNoCandidates(taskId: string, includeManualOnly: boolean): 
 }
 
 async function main(): Promise<void> {
-  if (!isSupabaseAdminConfigured()) {
-    console.error('\nFaltan SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY en .env.local.\n');
+  if (!dbConfigurada()) {
+    console.error('\nFaltan DB_HOST, DB_NAME, DB_USER y/o DB_PASSWORD en .env (ver .env.example).\n');
     process.exitCode = 1;
     return;
   }
@@ -288,7 +278,9 @@ async function main(): Promise<void> {
   console.log('\n=== Fin ===\n');
 }
 
-main().catch((error: unknown) => {
+main()
+  .finally(() => cerrarDb())
+  .catch((error: unknown) => {
   console.error(`\nVEKTORA/MATCH: falló -> ${errorMessage(error)}\n`);
   process.exitCode = 1;
 });

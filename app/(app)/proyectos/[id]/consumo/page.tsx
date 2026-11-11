@@ -1,26 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { toNumber, type PgNumeric } from '@/lib/supabase/types';
+import { consumoDelProyecto } from '@/lib/consultas';
+import { esUuid } from '@/lib/db';
 import { Dato, Panel, Titulo, Vacio } from '@/components/ui/primitivas';
 
 export const metadata = { title: 'Consumo de IA' };
-
-interface FilaCorrida {
-  id: string;
-  operation: string;
-  provider: string;
-  model: string;
-  status: string;
-  attempt: number;
-  fell_back_from: string | null;
-  total_tokens: number | null;
-  cost_usd: PgNumeric | null;
-  latency_ms: number | null;
-  error_message: string | null;
-  created_at: string;
-}
 
 const OPERACION: Record<string, string> = {
   project_planning: 'planificación',
@@ -54,36 +39,19 @@ const ESTADO: Record<string, { etiqueta: string; color: string }> = {
  * falló y el respaldo salvó la operación sin que nadie se enterara.
  */
 export default async function ConsumoProyecto({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
-  const supabase = await getSupabaseServer();
+  if (!esUuid(id)) notFound();
 
-  const proyecto = await supabase
-    .from('projects')
-    .select('id, title')
-    .eq('id', id)
-    .maybeSingle();
-  if (proyecto.error !== null || proyecto.data === null) notFound();
+  // RLS de `ai_runs`: solo la dueña del proyecto (o admin) ve las corridas.
+  const datos = await consumoDelProyecto(user.id, id);
+  if (datos === null) notFound();
+  const { titulo, corridas } = datos;
 
-  const { data } = await supabase
-    .from('ai_runs')
-    .select(
-      'id, operation, provider, model, status, attempt, fell_back_from, total_tokens, cost_usd, latency_ms, error_message, created_at',
-    )
-    .eq('project_id', id)
-    .order('created_at', { ascending: false })
-    .limit(100);
-
-  const corridas = (data ?? []) as unknown as FilaCorrida[];
-
-  const tokens = corridas.reduce((suma, fila) => suma + (fila.total_tokens ?? 0), 0);
-  const coste = corridas.reduce((suma, fila) => suma + (toNumber(fila.cost_usd) ?? 0), 0);
-  const conRespaldo = corridas.filter((fila) => fila.fell_back_from !== null).length;
-  const fallidas = corridas.filter((fila) =>
-    ['failed', 'timeout', 'rate_limited'].includes(fila.status),
-  ).length;
-
-  const titulo = (proyecto.data as unknown as { title: string }).title;
+  const tokens = corridas.reduce((suma, fila) => suma + (fila.totalTokens ?? 0), 0);
+  const coste = corridas.reduce((suma, fila) => suma + (fila.costUsd ?? 0), 0);
+  const conRespaldo = corridas.filter((fila) => fila.fellBackFrom !== null).length;
+  const fallidas = corridas.filter((fila) => ['failed', 'timeout', 'rate_limited'].includes(fila.status)).length;
 
   return (
     <div className="space-y-6">
@@ -162,24 +130,24 @@ export default async function ConsumoProyecto({ params }: { params: Promise<{ id
                 <span className="font-mono text-[var(--color-apagado)]">
                   {fila.provider}/{fila.model}
                 </span>
-                {fila.fell_back_from !== null && (
+                {fila.fellBackFrom !== null && (
                   <span style={{ color: 'var(--color-revision)' }}>
-                    respaldo tras {fila.fell_back_from}
+                    respaldo tras {fila.fellBackFrom}
                   </span>
                 )}
                 {fila.attempt > 1 && (
                   <span className="text-[var(--color-apagado)]">intento {fila.attempt}</span>
                 )}
                 <span className="ml-auto flex gap-4 text-[var(--color-apagado)] tabular-nums">
-                  {fila.total_tokens !== null && <span>{fila.total_tokens} tok</span>}
-                  {fila.latency_ms !== null && <span>{fila.latency_ms} ms</span>}
+                  {fila.totalTokens !== null && <span>{fila.totalTokens} tok</span>}
+                  {fila.latencyMs !== null && <span>{fila.latencyMs} ms</span>}
                 </span>
-                {fila.error_message !== null && (
+                {fila.errorMessage !== null && (
                   <p
                     className="w-full leading-relaxed"
                     style={{ color: 'var(--color-fallida)' }}
                   >
-                    {fila.error_message}
+                    {fila.errorMessage}
                   </p>
                 )}
               </div>

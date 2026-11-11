@@ -133,3 +133,25 @@ export function Avance({ porcentaje, etiqueta }: { porcentaje: number; etiqueta:
     </div>
   );
 }
+
+/**
+ * Mensaje de error o de confirmación. El texto ya viene de `mensajeParaUsuario()`: nunca es
+ * el error crudo del servidor.
+ */
+export function Aviso({ tipo, children }: { tipo: 'error' | 'ok' | 'info'; children: React.ReactNode }) {
+  const color =
+    tipo === 'error' ? 'var(--color-fallida)' : tipo === 'ok' ? 'var(--color-aprobada)' : 'var(--color-revision)';
+  return (
+    <p
+      role={tipo === 'error' ? 'alert' : 'status'}
+      className="aparece rounded-xl border px-3.5 py-2.5 text-sm leading-relaxed"
+      style={{
+        borderColor: `color-mix(in oklch, ${color} 40%, transparent)`,
+        backgroundColor: `color-mix(in oklch, ${color} 12%, transparent)`,
+        color,
+      }}
+    >
+      {children}
+    </p>
+  );
+}

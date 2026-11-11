@@ -18,9 +18,8 @@ import '@/lib/env';
 
 import { errorMessage } from '@/lib/ai/errors';
 import { createProjectPlanner } from '@/lib/planner';
-import { SupabasePlannerRepository } from '@/lib/planner/repository';
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { toNumber } from '@/lib/supabase/types';
+import { PostgresPlannerRepository } from '@/lib/planner';
+import { cerrarDb, getDb, toNumber } from '@/lib/db';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,7 +40,7 @@ interface OwnerResolution {
  * `projects.owner_id` referencia esa tabla, no `auth.users` directamente.
  */
 async function resolveOwner(): Promise<OwnerResolution> {
-  const client = getSupabaseAdmin();
+  const db = getDb();
   const fromEnv = process.env['VEKTORA_OWNER_ID']?.trim();
 
   if (fromEnv !== undefined && fromEnv !== '') {
@@ -52,26 +51,23 @@ async function resolveOwner(): Promise<OwnerResolution> {
       );
     }
 
-    const { data, error } = await client
-      .from('users')
-      .select('id, email, status')
-      .eq('id', fromEnv)
-      .maybeSingle();
-
-    if (error !== null) {
+    let data: { id: string; email: string | null; status: string } | null;
+    try {
+      data = await db.one('select id, email::text as email, status from public.users where id = $1', [fromEnv]);
+    } catch (error) {
       throw new Error(
-        `no se pudo consultar public.users -> ${error.message}. ¿Aplicaste db/schema.sql?`,
+        `no se pudo consultar public.users -> ${errorMessage(error)}. ¿Corriste npm run sql:aplicar?`,
       );
     }
     if (data === null) {
       throw new Error(
-        `VEKTORA_OWNER_ID=${fromEnv} no existe en public.users. Crea la cuenta en Supabase ` +
-          'Auth (el trigger de la FASE 1 la proyecta a public.users) o quita la variable ' +
-          'para usar el primer usuario disponible.',
+        `VEKTORA_OWNER_ID=${fromEnv} no existe en public.users. Creá la cuenta desde /entrar ` +
+          '(el trigger la proyecta a public.users) o quitá la variable para usar el primer ' +
+          'usuario disponible.',
       );
     }
 
-    const row = data as { id: string; email: string | null; status?: string };
+    const row = data;
     if (row.status === 'suspended' || row.status === 'deleted') {
       throw new Error(
         `el usuario ${fromEnv} está en estado "${row.status}": no puede ser propietario de ` +
@@ -81,24 +77,19 @@ async function resolveOwner(): Promise<OwnerResolution> {
     return { id: row.id, email: row.email, source: 'VEKTORA_OWNER_ID' };
   }
 
-  const { data, error } = await client
-    .from('users')
-    .select('id, email')
-    .eq('status', 'active')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (error !== null) {
-    throw new Error(
-      `no se pudo leer public.users -> ${error.message}. ¿Aplicaste db/schema.sql?`,
+  let row: { id: string; email: string | null } | null;
+  try {
+    row = await db.one(
+      `select id, email::text as email from public.users
+        where status = 'active' order by created_at limit 1`,
     );
+  } catch (error) {
+    throw new Error(`no se pudo leer public.users -> ${errorMessage(error)}. ¿Corriste npm run sql:aplicar?`);
   }
-  const row = data as { id: string; email: string | null } | null;
   if (row === null) {
     throw new Error(
-      'no hay ningún usuario activo en public.users. Crea una cuenta en Supabase Auth o ' +
-        'define VEKTORA_OWNER_ID con el uuid de un usuario existente.',
+      'no hay ningún usuario activo en public.users. Creá una cuenta desde /entrar o ' +
+        'definí VEKTORA_OWNER_ID con el uuid de un usuario existente.',
     );
   }
   return { id: row.id, email: row.email, source: 'public.users' };
@@ -129,7 +120,7 @@ async function main(): Promise<void> {
 
   const owner = await resolveOwner();
   const planner = createProjectPlanner({
-    repository: new SupabasePlannerRepository(getSupabaseAdmin()),
+    repository: new PostgresPlannerRepository(getDb()),
   });
 
   console.log('[0] Propietario');
@@ -174,17 +165,19 @@ async function main(): Promise<void> {
   console.log();
 
   console.log('[4] Tareas persistidas');
-  const { data, error } = await getSupabaseAdmin()
-    .from('project_tasks')
-    .select('code, title, status, depth, order_index, estimated_hours, budget, required_skills')
-    .eq('project_id', result.project.id)
-    .order('order_index', { ascending: true });
-
-  if (error !== null) {
-    console.log(`  (no se pudieron releer las tareas: ${error.message})`);
-  } else {
+  let data: Array<Record<string, unknown>> | null = null;
+  try {
+    data = await getDb().query(
+      `select code, title, status, depth, order_index, estimated_hours, budget, required_skills
+         from public.project_tasks where project_id = $1 order by order_index`,
+      [result.project.id],
+    );
+  } catch (error) {
+    console.log(`  (no se pudieron releer las tareas: ${errorMessage(error)})`);
+  }
+  if (data !== null) {
     let budgetSum = 0;
-    for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    for (const row of data) {
       const skills = Array.isArray(row['required_skills'])
         ? (row['required_skills'] as string[]).join(',')
         : '';
@@ -223,7 +216,9 @@ async function main(): Promise<void> {
   console.log('\n=== Plan aplicado ===\n');
 }
 
-main().catch((error: unknown) => {
+main()
+  .finally(() => cerrarDb())
+  .catch((error: unknown) => {
   console.error(`\nVEKTORA/PLANNER: falló -> ${errorMessage(error)}\n`);
   process.exitCode = 1;
 });

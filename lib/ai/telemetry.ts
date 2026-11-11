@@ -7,7 +7,7 @@
  * `pending` con `finished_at` nulo, que es precisamente la señal útil en la FASE 7.
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { json, type Consultor } from '@/lib/db';
 import type { AiConfig } from './config';
 import { isTelemetryConfigured } from './config';
 import type { FlatZodIssue } from './errors';
@@ -46,7 +46,7 @@ export interface TelemetrySink {
   finish(runId: string | null, patch: RunFinish): Promise<void>;
 }
 
-/** Sin telemetría (entorno local sin Supabase). */
+/** Sin telemetría (entorno local sin base de datos). */
 export class NullTelemetrySink implements TelemetrySink {
   async start(): Promise<string | null> {
     return null;
@@ -105,44 +105,41 @@ function sanitizePayload(
   }
 }
 
-/** Persiste en `public.ai_runs` con el cliente `service_role`. */
-export class SupabaseTelemetrySink implements TelemetrySink {
+/**
+ * Persiste en `public.ai_runs` como dueño de las tablas (la identidad de los agentes).
+ * Es la tercera implementación de `TelemetrySink` junto con `NullTelemetrySink` y
+ * `InMemoryTelemetrySink`: el cliente de IA no sabe cuál recibe (polimorfismo, R5).
+ */
+export class PostgresTelemetrySink implements TelemetrySink {
   constructor(
-    private readonly client: SupabaseClient,
+    private readonly db: Consultor,
     private readonly logPayloads: boolean,
     private readonly maxChars: number,
   ) {}
 
   async start(run: RunStart): Promise<string | null> {
     try {
-      const { data, error } = await this.client
-        .from('ai_runs')
-        .insert({
-          operation: run.operation,
-          provider: run.provider,
-          model: run.model,
-          status: 'pending' satisfies AiRunStatus,
-          attempt: run.attempt,
-          fell_back_from: run.fellBackFrom ?? null,
-          parent_run_id: run.parentRunId ?? null,
-          user_id: run.context?.userId ?? null,
-          project_id: run.context?.projectId ?? null,
-          task_id: run.context?.taskId ?? null,
-          request_payload: sanitizePayload(
-            run.requestPayload,
-            this.logPayloads,
-            this.maxChars,
-          ),
-        })
-        .select('id')
-        .single();
-
-      if (error !== null) {
-        reportTelemetryFailure('start', error.message);
-        return null;
-      }
-      const id = (data as { id?: unknown } | null)?.id;
-      return typeof id === 'string' ? id : null;
+      const fila = await this.db.one<{ id: string }>(
+        `insert into public.ai_runs
+           (operation, provider, model, status, attempt, fell_back_from, parent_run_id,
+            user_id, project_id, task_id, request_payload)
+         values ($1::public.ai_operation, $2::public.ai_provider, $3, 'pending', $4,
+                 $5::public.ai_provider, $6, $7, $8, $9, $10::jsonb)
+         returning id`,
+        [
+          run.operation,
+          run.provider,
+          run.model,
+          run.attempt,
+          run.fellBackFrom ?? null,
+          run.parentRunId ?? null,
+          run.context?.userId ?? null,
+          run.context?.projectId ?? null,
+          run.context?.taskId ?? null,
+          json(sanitizePayload(run.requestPayload, this.logPayloads, this.maxChars)),
+        ],
+      );
+      return fila?.id ?? null;
     } catch (error) {
       reportTelemetryFailure('start', error);
       return null;
@@ -152,27 +149,26 @@ export class SupabaseTelemetrySink implements TelemetrySink {
   async finish(runId: string | null, patch: RunFinish): Promise<void> {
     if (runId === null) return;
     try {
-      const { error } = await this.client
-        .from('ai_runs')
-        .update({
-          status: patch.status,
-          prompt_tokens: patch.usage?.promptTokens ?? null,
-          completion_tokens: patch.usage?.completionTokens ?? null,
-          total_tokens: patch.usage?.totalTokens ?? null,
-          latency_ms: patch.latencyMs ?? null,
-          cost_usd: patch.costUsd ?? 0,
-          response_payload: sanitizePayload(
-            patch.responsePayload,
-            this.logPayloads,
-            this.maxChars,
-          ),
-          zod_errors: patch.zodErrors ?? null,
-          error_message: patch.errorMessage ?? null,
-          finished_at: new Date().toISOString(),
-        })
-        .eq('id', runId);
-
-      if (error !== null) reportTelemetryFailure('finish', error.message);
+      await this.db.execute(
+        `update public.ai_runs
+            set status = $2::public.ai_run_status,
+                prompt_tokens = $3, completion_tokens = $4, total_tokens = $5,
+                latency_ms = $6, cost_usd = $7, response_payload = $8::jsonb,
+                zod_errors = $9::jsonb, error_message = $10, finished_at = now()
+          where id = $1`,
+        [
+          runId,
+          patch.status,
+          patch.usage?.promptTokens ?? null,
+          patch.usage?.completionTokens ?? null,
+          patch.usage?.totalTokens ?? null,
+          patch.latencyMs ?? null,
+          patch.costUsd ?? 0,
+          json(sanitizePayload(patch.responsePayload, this.logPayloads, this.maxChars)),
+          patch.zodErrors === undefined ? null : json(patch.zodErrors),
+          patch.errorMessage ?? null,
+        ],
+      );
     } catch (error) {
       reportTelemetryFailure('finish', error);
     }
@@ -186,29 +182,29 @@ function reportTelemetryFailure(stage: 'start' | 'finish', detail: unknown): voi
 }
 
 export interface BuildTelemetryOptions {
-  client?: SupabaseClient | undefined;
+  db?: Consultor | undefined;
 }
 
 export function buildTelemetrySink(
   config: AiConfig,
   options: BuildTelemetryOptions = {},
 ): TelemetrySink {
-  if (options.client !== undefined) {
-    return new SupabaseTelemetrySink(
-      options.client,
+  if (options.db !== undefined) {
+    return new PostgresTelemetrySink(
+      options.db,
       config.AI_LOG_PAYLOADS,
       config.AI_LOG_PAYLOAD_MAX_CHARS,
     );
   }
   if (!isTelemetryConfigured(config)) return new NullTelemetrySink();
-  return new LazySupabaseTelemetrySink(config);
+  return new LazyPostgresTelemetrySink(config);
 }
 
 /**
- * Retrasa la creación del cliente Supabase hasta la primera escritura, para que importar
- * la capa de IA no exija credenciales de base de datos.
+ * Retrasa la conexión hasta la primera escritura, para que importar la capa de IA no exija
+ * una base de datos (las pruebas y `next build` no la tienen).
  */
-class LazySupabaseTelemetrySink implements TelemetrySink {
+class LazyPostgresTelemetrySink implements TelemetrySink {
   private delegate: TelemetrySink | null = null;
 
   constructor(private readonly config: AiConfig) {}
@@ -216,13 +212,9 @@ class LazySupabaseTelemetrySink implements TelemetrySink {
   private async resolve(): Promise<TelemetrySink> {
     if (this.delegate !== null) return this.delegate;
     try {
-      const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
-      const client = createSupabaseAdmin({
-        url: this.config.SUPABASE_URL,
-        serviceRoleKey: this.config.SUPABASE_SERVICE_ROLE_KEY,
-      });
-      this.delegate = new SupabaseTelemetrySink(
-        client,
+      const { getDb } = await import('@/lib/db');
+      this.delegate = new PostgresTelemetrySink(
+        getDb(),
         this.config.AI_LOG_PAYLOADS,
         this.config.AI_LOG_PAYLOAD_MAX_CHARS,
       );

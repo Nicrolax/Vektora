@@ -5,13 +5,14 @@
  * la política —que es donde el juez puede equivocarse— se prueba sin base de datos.
  *
  * Las cuatro operaciones son RPC y no consultas sueltas por una razón concreta: tomar el
- * turno y escribir el veredicto tienen que ser atómicos. `supabase-js` no tiene
- * transacciones multi-sentencia, así que hacerlo desde aquí dejaría ventanas en las que dos
- * jueces juzgan lo mismo o una tarea queda aprobada sin reseña.
+ * turno y escribir el veredicto tienen que ser atómicos. Cada función SQL corre entera en una
+ * sola transacción del servidor: hacerlo con consultas sueltas desde aquí dejaría ventanas en
+ * las que dos jueces juzgan lo mismo o una tarea queda aprobada sin reseña.
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { toNumber, type PgNumeric } from '@/lib/supabase/types';
+import { json, toNumber, type Consultor } from '@/lib/db';
+import type { PgNumeric } from '@/lib/db/types';
+import { DatabaseError } from '@/lib/errores';
 import type { QaOutcome, ReputationDelta, TaskOutcome } from './policy';
 
 export interface QaClaim {
@@ -102,16 +103,24 @@ export interface QaRepository {
   latestDeliverableForTask(taskId: string): Promise<string | null>;
 }
 
-export class QaRepositoryError extends Error {
-  readonly code: string | undefined;
-  readonly details: unknown;
+/**
+ * Fallo de persistencia del juez. Hereda de `DatabaseError`: conserva el SQLSTATE y nunca
+ * muestra el texto de la base a la persona.
+ */
+export class QaRepositoryError extends DatabaseError {
+  override readonly codigo: string = 'qa_repositorio';
+}
 
-  constructor(message: string, code?: string, details?: unknown) {
-    super(message);
-    this.name = 'QaRepositoryError';
-    this.code = code;
-    this.details = details;
+function fail(action: string, error: unknown): never {
+  if (error instanceof DatabaseError) {
+    throw new QaRepositoryError(
+      `VEKTORA/QA: ${action} -> ${error.message}`,
+      error.sqlstate,
+      error.details,
+      { cause: error },
+    );
   }
+  throw error;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -128,19 +137,20 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-export class SupabaseQaRepository implements QaRepository {
-  constructor(private readonly client: SupabaseClient) {}
+/** Implementación sobre PostgreSQL. Todas las consultas son parametrizadas (R9). */
+export class PostgresQaRepository implements QaRepository {
+  constructor(private readonly db: Consultor) {}
 
   async claim(deliverableId: string): Promise<QaClaimResult> {
-    const { data, error } = await this.client.rpc('claim_deliverable_for_qa', {
-      p_deliverable_id: deliverableId,
-    });
-    if (error !== null) {
-      throw new QaRepositoryError(
-        `VEKTORA/QA: no se pudo tomar el entregable -> ${error.message}`,
-        error.code,
-        error,
+    let data: unknown;
+    try {
+      const fila = await this.db.one<{ r: unknown }>(
+        'select public.claim_deliverable_for_qa(p_deliverable_id => $1::uuid) as r',
+        [deliverableId],
       );
+      data = fila?.r;
+    } catch (error) {
+      fail('no se pudo tomar el entregable', error);
     }
 
     const payload = asRecord(data);
@@ -202,42 +212,52 @@ export class SupabaseQaRepository implements QaRepository {
     status: QaReleaseStatus,
     error: string | null,
   ): Promise<boolean> {
-    const { data, error: rpcError } = await this.client.rpc('release_deliverable_qa', {
-      p_deliverable_id: deliverableId,
-      p_status: status,
-      p_error: error,
-    });
-    if (rpcError !== null) {
-      throw new QaRepositoryError(
-        `VEKTORA/QA: no se pudo devolver el turno -> ${rpcError.message}`,
-        rpcError.code,
-        rpcError,
+    try {
+      const fila = await this.db.one<{ r: boolean | null }>(
+        `select public.release_deliverable_qa(
+                  p_deliverable_id => $1::uuid, p_status => $2::public.qa_status, p_error => $3) as r`,
+        [deliverableId, status, error],
       );
+      return fila?.r === true;
+    } catch (causa) {
+      fail('no se pudo devolver el turno', causa);
     }
-    return data === true;
   }
 
   async applyVerdict(input: ApplyVerdictInput): Promise<ApplyVerdictResult> {
-    const { data, error } = await this.client.rpc('apply_qa_verdict', {
-      p_deliverable_id: input.deliverableId,
-      p_qa_status: input.qaStatus,
-      p_qa_score: input.score,
-      p_qa_feedback: input.feedback,
-      p_qa_criteria_results: input.criteriaResults,
-      p_task_status: input.taskStatus,
-      p_rating: input.rating,
-      p_qa_run_id: input.runId,
-      p_quality_score: input.qualityScore,
-      p_timeliness_score: null,
-      p_comment: input.comment,
-      p_reputation: input.reputation,
-    });
-    if (error !== null) {
-      throw new QaRepositoryError(
-        `VEKTORA/QA: no se pudo aplicar el veredicto -> ${error.message}`,
-        error.code,
-        error,
+    let data: unknown;
+    try {
+      const fila = await this.db.one<{ r: unknown }>(
+        `select public.apply_qa_verdict(
+                  p_deliverable_id      => $1::uuid,
+                  p_qa_status           => $2::public.qa_status,
+                  p_qa_score            => $3::numeric,
+                  p_qa_feedback         => $4::jsonb,
+                  p_qa_criteria_results => $5::jsonb,
+                  p_task_status         => $6::public.task_status,
+                  p_rating              => $7::numeric,
+                  p_qa_run_id           => $8::uuid,
+                  p_quality_score       => $9::numeric,
+                  p_timeliness_score    => null,
+                  p_comment             => $10,
+                  p_reputation          => $11::jsonb) as r`,
+        [
+          input.deliverableId,
+          input.qaStatus,
+          input.score,
+          json(input.feedback),
+          json(input.criteriaResults),
+          input.taskStatus,
+          input.rating,
+          input.runId,
+          input.qualityScore,
+          input.comment,
+          json(input.reputation),
+        ],
       );
+      data = fila?.r;
+    } catch (error) {
+      fail('no se pudo aplicar el veredicto', error);
     }
 
     const payload = asRecord(data);
@@ -251,47 +271,42 @@ export class SupabaseQaRepository implements QaRepository {
   }
 
   async pending(limit: number): Promise<PendingDeliverable[]> {
-    const { data, error } = await this.client.rpc('pending_qa_deliverables', { p_limit: limit });
-    if (error !== null) {
-      throw new QaRepositoryError(
-        `VEKTORA/QA: no se pudo leer la cola -> ${error.message}`,
-        error.code,
-        error,
+    let filas: Record<string, unknown>[];
+    try {
+      filas = await this.db.query(
+        'select * from public.pending_qa_deliverables(p_limit => $1::integer)',
+        [limit],
       );
+    } catch (error) {
+      fail('no se pudo leer la cola', error);
     }
 
-    return asArray(data).map((entry) => {
-      const row = asRecord(entry);
-      return {
-        deliverableId: String(row['deliverable_id']),
-        taskId: String(row['task_id']),
-        projectId: String(row['project_id']),
-        taskCode: String(row['task_code'] ?? ''),
-        taskTitle: String(row['task_title'] ?? ''),
-        providerId: String(row['provider_id']),
-        version: Number(row['version'] ?? 1),
-        qaStatus: String(row['qa_status'] ?? ''),
-        submittedAt: String(row['submitted_at'] ?? ''),
-        criteriaCount: Number(row['criteria_count'] ?? 0),
-      };
-    });
+    return filas.map((row) => ({
+      deliverableId: String(row['deliverable_id']),
+      taskId: String(row['task_id']),
+      projectId: String(row['project_id']),
+      taskCode: String(row['task_code'] ?? ''),
+      taskTitle: String(row['task_title'] ?? ''),
+      providerId: String(row['provider_id']),
+      version: Number(row['version'] ?? 1),
+      qaStatus: String(row['qa_status'] ?? ''),
+      submittedAt: String(row['submitted_at'] ?? ''),
+      criteriaCount: Number(row['criteria_count'] ?? 0),
+    }));
   }
 
   async latestDeliverableForTask(taskId: string): Promise<string | null> {
-    const { data, error } = await this.client
-      .from('deliverables')
-      .select('id, version, qa_status')
-      .eq('task_id', taskId)
-      .order('version', { ascending: false })
-      .limit(1);
-    if (error !== null) {
-      throw new QaRepositoryError(
-        `VEKTORA/QA: no se pudo buscar el entregable de la tarea -> ${error.message}`,
-        error.code,
-        error,
+    try {
+      const fila = await this.db.one<{ id: string }>(
+        `select id from public.deliverables
+          where task_id = $1
+          order by version desc
+          limit 1`,
+        [taskId],
       );
+      return fila?.id ?? null;
+    } catch (error) {
+      fail('no se pudo buscar el entregable de la tarea', error);
     }
-    const row = (data ?? [])[0] as { id?: unknown } | undefined;
-    return row === undefined ? null : String(row.id);
   }
 }

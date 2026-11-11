@@ -1,11 +1,12 @@
 'use server';
 
 /**
- * VEKTORA · FASE 6 — Registro de entregables (RF-5.2 a RF-5.5).
+ * VEKTORA — Registro de entregables (presentación → servicio).
  *
- * La comprobación que importa está en la tercera línea de `entregarTrabajo`: solo el
- * proveedor ADJUDICADO puede entregar. No basta con tener sesión. Sin eso, cualquiera con
- * el identificador de una tarea podría inyectar un entregable ajeno y cobrar su reputación.
+ * La acción traduce el formulario; la entrega en sí es UNA transacción en
+ * `EntregasService` (lib/entregas): bloquea la tarea, comprueba que la persona sea la
+ * adjudicada, inserta el entregable, pasa la tarea a `submitted` y registra la auditoría.
+ * Todo o nada (R7).
  *
  * La evidencia se guarda como un objeto con una clave por criterio. Esa correspondencia es
  * lo que hace fiable al evaluador: no se le pide que adivine qué parte del trabajo responde
@@ -14,25 +15,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { z } from 'zod';
-import { errorMessage } from '@/lib/ai/errors';
-import { requireUserOrThrow } from '@/lib/auth/session';
+import type { Route } from 'next';
+import { exigirPermiso } from '@/lib/auth/session';
 import { consumirCuota } from '@/lib/cuotas';
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
-
-const EntregaSchema = z.object({
-  taskId: z.string().uuid('Identificador de tarea inválido'),
-  summary: z
-    .string()
-    .trim()
-    .min(10, 'El resumen necesita al menos 10 caracteres')
-    .max(2000, 'El resumen es demasiado largo'),
-  content: z
-    .string()
-    .trim()
-    .min(1, 'Hace falta entregar algo: el evaluador no aprueba nada sin evidencia')
-    .max(200_000, 'El contenido supera el máximo admitido'),
-});
+import { esUuid } from '@/lib/db';
+import { EntregasService } from '@/lib/entregas';
+import { mensajeParaUsuario, ValidacionError } from '@/lib/errores';
 
 export interface ResultadoEntrega {
   ok: boolean;
@@ -40,102 +28,55 @@ export interface ResultadoEntrega {
   faltantes: string[];
 }
 
+function texto(formData: FormData, campo: string): string {
+  const valor = formData.get(campo);
+  return typeof valor === 'string' ? valor.trim() : '';
+}
+
 export async function entregarTrabajo(
   _estadoPrevio: ResultadoEntrega,
   formData: FormData,
 ): Promise<ResultadoEntrega> {
-  const user = await requireUserOrThrow();
+  let destino: string;
+  try {
+    const user = await exigirPermiso('trabajo:entregar');
 
-  const parsed = EntregaSchema.safeParse({
-    taskId: formData.get('taskId'),
-    summary: formData.get('summary'),
-    content: formData.get('content'),
-  });
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? 'Los datos no son válidos',
-      faltantes: [],
-    };
+    const taskId = formData.get('taskId');
+    if (!esUuid(taskId)) throw new ValidacionError('Identificador de tarea inválido.');
+
+    const summary = texto(formData, 'summary');
+    const content = texto(formData, 'content');
+    if (summary.length > 2000) throw new ValidacionError('El resumen es demasiado largo (máximo 2000 caracteres).');
+    if (content.length > 200_000) throw new ValidacionError('El contenido supera el máximo admitido.');
+
+    // Las claves `evidencia:<criterio>` del formulario.
+    const evidencia: Record<string, string> = {};
+    const criterios: string[] = [];
+    for (const [clave, valor] of formData.entries()) {
+      if (!clave.startsWith('evidencia:') || typeof valor !== 'string') continue;
+      const id = clave.slice('evidencia:'.length);
+      criterios.push(id);
+      evidencia[id] = valor;
+    }
+
+    // Los criterios sin evidencia se avisan pero NO bloquean: el evaluador los juzgará contra
+    // el contenido general, con menos confianza. Impedir entregar sería peor.
+    const faltantes = EntregasService.faltantes(criterios, evidencia);
+    if (faltantes.length > 0 && formData.get('confirmar') !== 'si') {
+      return { ok: false, error: null, faltantes };
+    }
+
+    // Entregar es barato, pero cada entrega dispara una evaluación, que no lo es.
+    const cuota = await consumirCuota(user.id, 'entregar');
+    if (!cuota.permitido) return { ok: false, error: cuota.mensaje, faltantes: [] };
+
+    const entrega = await new EntregasService().entregar(user.id, { taskId, summary, content, evidence: evidencia });
+    revalidatePath(`/proyectos/${entrega.projectId}`);
+    revalidatePath(`/tareas/${taskId}`);
+    revalidatePath('/proveedor');
+    destino = `/tareas/${taskId}?entregado=${entrega.version}`;
+  } catch (error) {
+    return { ok: false, error: mensajeParaUsuario(error), faltantes: [] };
   }
-
-  const admin = getSupabaseAdmin();
-
-  const { data: tarea, error: errorTarea } = await admin
-    .from('project_tasks')
-    .select('id, project_id, assignee_id, acceptance_criteria, status')
-    .eq('id', parsed.data.taskId)
-    .maybeSingle();
-
-  if (errorTarea !== null || tarea === null) {
-    return { ok: false, error: 'La tarea no existe', faltantes: [] };
-  }
-
-  const fila = tarea as unknown as {
-    project_id: string;
-    assignee_id: string | null;
-    acceptance_criteria: Array<{ id?: unknown }>;
-  };
-
-  // La comprobación que de verdad protege: tener sesión no alcanza.
-  if (fila.assignee_id !== user.id) {
-    return {
-      ok: false,
-      error: 'Esta tarea está adjudicada a otro proveedor',
-      faltantes: [],
-    };
-  }
-
-  const identificadores = (Array.isArray(fila.acceptance_criteria) ? fila.acceptance_criteria : [])
-    .map((criterio) => (typeof criterio.id === 'string' ? criterio.id : null))
-    .filter((id): id is string => id !== null);
-
-  const evidencia: Record<string, string> = {};
-  const faltantes: string[] = [];
-  for (const identificador of identificadores) {
-    const valor = formData.get(`evidencia:${identificador}`);
-    const texto = typeof valor === 'string' ? valor.trim() : '';
-    if (texto === '') faltantes.push(identificador);
-    else evidencia[identificador] = texto;
-  }
-
-  // Los criterios sin evidencia se avisan pero NO bloquean la entrega: el evaluador los
-  // juzgará contra el contenido general, con menos confianza. Impedir entregar sería peor
-  // que entregar desalineado (RF-5.4).
-  if (faltantes.length > 0 && formData.get('confirmar') !== 'si') {
-    return { ok: false, error: null, faltantes };
-  }
-
-  // Entregar es barato, pero cada entrega dispara una evaluación, que no lo es.
-  const cuota = await consumirCuota(user.id, 'entregar');
-  if (!cuota.permitido) return { ok: false, error: cuota.mensaje, faltantes: [] };
-
-  const { data: entregable, error: errorEntrega } = await admin
-    .from('deliverables')
-    .insert({
-      task_id: parsed.data.taskId,
-      provider_id: user.id,
-      summary: parsed.data.summary,
-      content: parsed.data.content,
-      artifacts: [],
-      evidence: evidencia,
-    })
-    .select('id')
-    .single();
-
-  if (errorEntrega !== null) {
-    return { ok: false, error: errorMessage(errorEntrega), faltantes: [] };
-  }
-
-  // Si el cambio de estado falla, la entrega ya está escrita y el evaluador la recogerá
-  // igual desde la cola. Se prefiere un estado desactualizado a perder el trabajo.
-  await admin
-    .from('project_tasks')
-    .update({ status: 'submitted' })
-    .eq('id', parsed.data.taskId)
-    .in('status', ['assigned', 'in_progress', 'revision_requested']);
-
-  revalidatePath(`/proyectos/${fila.project_id}`);
-  revalidatePath(`/tareas/${parsed.data.taskId}`);
-  redirect(`/tareas/${parsed.data.taskId}?entregado=${(entregable as { id: string }).id}`);
+  redirect(destino as Route);
 }

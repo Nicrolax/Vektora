@@ -8,9 +8,9 @@
  *   result.decision?.explanation.summary
  */
 
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getDb } from '@/lib/db';
 import { QaJudge, type QaJudgeOptions } from './judge';
-import { SupabaseQaRepository } from './repository';
+import { PostgresQaRepository } from './repository';
 
 export { QaError, QaJudge } from './judge';
 export type { JudgeInput, JudgeResult, QaJudgeOptions } from './judge';
@@ -34,7 +34,7 @@ export type {
   TaskOutcome,
 } from './policy';
 
-export { QaRepositoryError, SupabaseQaRepository } from './repository';
+export { QaRepositoryError, PostgresQaRepository } from './repository';
 export type {
   ApplyVerdictInput,
   ApplyVerdictResult,
@@ -59,9 +59,9 @@ export type { JudgeContext } from './prompts';
 export { getQaConfig, loadQaConfig, QaConfigError, QaConfigSchema, resetQaConfigCache } from './config';
 export type { QaConfig, QaEnv } from './config';
 
-/** Juez listo para usar contra Supabase con `service_role`. */
+/** Juez listo para usar contra PostgreSQL con la identidad de los agentes. */
 export function createQaJudge(options: Partial<QaJudgeOptions> = {}): QaJudge {
-  const repository = options.repository ?? new SupabaseQaRepository(getSupabaseAdmin());
+  const repository = options.repository ?? new PostgresQaRepository(getDb());
   return new QaJudge({
     repository,
     ...(options.ai === undefined ? {} : { ai: options.ai }),

@@ -1,28 +1,9 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/session';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { toNumber, type PgNumeric } from '@/lib/supabase/types';
+import { requirePermiso } from '@/lib/auth/session';
+import { perfilProveedor, trabajoDelProveedor } from '@/lib/consultas';
 import { Dato, Dinero, EnlaceBoton, Insignia, Panel, Titulo, Vacio } from '@/components/ui/primitivas';
 
-export const metadata = { title: 'Mi trabajo · VEKTORA' };
-
-interface FilaTarea {
-  id: string;
-  code: string;
-  title: string;
-  status: string;
-  budget: PgNumeric | null;
-  projects: { title: string } | { title: string }[];
-}
-
-interface FilaEvento {
-  id: string;
-  event_type: string;
-  delta: PgNumeric;
-  weight: PgNumeric;
-  reason: string | null;
-  created_at: string;
-}
+export const metadata = { title: 'Mi trabajo' };
 
 const EVENTO: Record<string, string> = {
   onboarding_bonus: 'bonificación de alta',
@@ -39,24 +20,8 @@ const EVENTO: Record<string, string> = {
 };
 
 export default async function PanelProveedor() {
-  const user = await requireUser();
-  const supabase = await getSupabaseServer();
-
-  const { data: perfilCrudo } = await supabase
-    .from('provider_profiles')
-    .select('id, headline, reputation_score, avg_rating, tasks_completed, tasks_failed, accepts_auto_assign, is_active')
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  const perfil = perfilCrudo as unknown as {
-    headline: string | null;
-    reputation_score: PgNumeric;
-    avg_rating: PgNumeric | null;
-    tasks_completed: number;
-    tasks_failed: number;
-    accepts_auto_assign: boolean;
-    is_active: boolean;
-  } | null;
+  const user = await requirePermiso('proveedor:perfil');
+  const perfil = await perfilProveedor(user.id);
 
   if (perfil === null) {
     return (
@@ -75,23 +40,7 @@ export default async function PanelProveedor() {
     );
   }
 
-  const [tareas, eventos] = await Promise.all([
-    supabase
-      .from('project_tasks')
-      .select('id, code, title, status, budget, projects!inner(title)')
-      .eq('assignee_id', user.id)
-      .order('updated_at', { ascending: false })
-      .limit(30),
-    supabase
-      .from('reputation_events')
-      .select('id, event_type, delta, weight, reason, created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(15),
-  ]);
-
-  const misTareas = (tareas.data ?? []) as unknown as FilaTarea[];
-  const misEventos = (eventos.data ?? []) as unknown as FilaEvento[];
+  const { tareas: misTareas, eventos: misEventos } = await trabajoDelProveedor(user.id);
 
   return (
     <div className="space-y-6">
@@ -103,7 +52,7 @@ export default async function PanelProveedor() {
         <EnlaceBoton href="/proveedor/alta">Editar perfil</EnlaceBoton>
       </div>
 
-      {!perfil.accepts_auto_assign && (
+      {!perfil.acceptsAutoAssign && (
         <p
           role="alert"
           className="rounded-lg border border-[var(--color-revision)]/40 bg-[var(--color-revision)]/10 px-3 py-2.5 text-sm leading-relaxed text-[var(--color-revision)]"
@@ -117,18 +66,16 @@ export default async function PanelProveedor() {
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Dato
             etiqueta="Reputación"
-            valor={(toNumber(perfil.reputation_score) ?? 0).toFixed(2)}
+            valor={perfil.reputationScore.toFixed(2)}
           />
           <Dato
             etiqueta="Valoración media"
             valor={
-              perfil.avg_rating === null
-                ? 'sin historial'
-                : `${(toNumber(perfil.avg_rating) ?? 0).toFixed(2)} / 5`
+              perfil.avgRating === null ? 'sin historial' : `${perfil.avgRating.toFixed(2)} / 5`
             }
           />
-          <Dato etiqueta="Tareas completadas" valor={String(perfil.tasks_completed)} />
-          <Dato etiqueta="Tareas fallidas" valor={String(perfil.tasks_failed)} />
+          <Dato etiqueta="Tareas completadas" valor={String(perfil.tasksCompleted)} />
+          <Dato etiqueta="Tareas fallidas" valor={String(perfil.tasksFailed)} />
         </dl>
       </Panel>
 
@@ -144,7 +91,6 @@ export default async function PanelProveedor() {
             </Vacio>
           )}
           {misTareas.map((tarea) => {
-            const proyecto = Array.isArray(tarea.projects) ? tarea.projects[0] : tarea.projects;
             const puedeEntregar = ['assigned', 'in_progress', 'revision_requested'].includes(
               tarea.status,
             );
@@ -160,11 +106,11 @@ export default async function PanelProveedor() {
                     </span>
                     {tarea.title}
                   </Link>
-                  <p className="text-xs text-[var(--color-apagado)]">{proyecto?.title}</p>
+                  <p className="text-xs text-[var(--color-apagado)]">{tarea.projectTitle}</p>
                 </div>
                 <Insignia estado={tarea.status} />
                 <span className="text-sm">
-                  <Dinero valor={toNumber(tarea.budget)} />
+                  <Dinero valor={tarea.budget} />
                 </span>
                 {puedeEntregar && (
                   <Link
@@ -187,7 +133,7 @@ export default async function PanelProveedor() {
         <div className="mt-4 space-y-1.5">
           {misEventos.length === 0 && <Vacio>Todavía no hay eventos de reputación.</Vacio>}
           {misEventos.map((evento) => {
-            const delta = (toNumber(evento.delta) ?? 0) * (toNumber(evento.weight) ?? 1);
+            const delta = evento.puntos;
             return (
               <div
                 key={evento.id}
@@ -202,7 +148,7 @@ export default async function PanelProveedor() {
                   {delta >= 0 ? '+' : ''}
                   {delta.toFixed(2)}
                 </span>
-                <span>{EVENTO[evento.event_type] ?? evento.event_type}</span>
+                <span>{EVENTO[evento.eventType] ?? evento.eventType}</span>
                 {evento.reason !== null && (
                   <span className="text-[var(--color-apagado)]">{evento.reason}</span>
                 )}

@@ -17,6 +17,7 @@
  * Abortar y esperar a una persona no es una opción: lo prohíbe la regla 1 del proyecto.
  */
 
+import { DominioError } from '@/lib/errores';
 import type { AiClient } from '@/lib/ai/ai-client';
 import { getAiClient } from '@/lib/ai/ai-client';
 import { AiExhaustedError, errorMessage, isAiError } from '@/lib/ai/errors';
@@ -109,10 +110,9 @@ export interface ProjectPlannerOptions {
   embeddings?: EmbeddingService | null;
 }
 
-export class PlannerError extends Error {
+export class PlannerError extends DominioError {
   constructor(message: string, cause?: unknown) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = 'PlannerError';
   }
 }
 

@@ -1,8 +1,8 @@
-import { requireUser } from '@/lib/auth/session';
+import { requirePermiso } from '@/lib/auth/session';
 import { Panel } from '@/components/ui/primitivas';
 import { FormularioProyecto } from './formulario';
 
-export const metadata = { title: 'Nuevo proyecto · VEKTORA' };
+export const metadata = { title: 'Nuevo proyecto' };
 
 /**
  * La planificación es sincrónica y llama a un modelo de lenguaje: en el free tier de Vercel
@@ -12,7 +12,7 @@ export const metadata = { title: 'Nuevo proyecto · VEKTORA' };
 export const maxDuration = 60;
 
 export default async function NuevoProyecto() {
-  await requireUser();
+  await requirePermiso('proyectos:crear');
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">

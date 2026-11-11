@@ -3,12 +3,18 @@ node_modules/
 .pnp
 .pnp.js
 
-# --- Entorno: NUNCA se versiona ------------------------------------------------------
-# .env.local contiene SUPABASE_SERVICE_ROLE_KEY, que bypassea RLS. env.example sí se sube.
+# --- Entorno y credenciales: NUNCA se versionan ---------------------------------------
+# `.env` tiene la contraseña de la base, AUTH_SECRET, CRON_SECRET y las claves de IA.
+# `.env.example` (solo nombres, sin valores) sí se sube.
 .env
-.env.local
-.env.*.local
-!env.example
+.env.*
+!.env.example
+# Secret real de Kubernetes (el repo solo lleva k8s/secret.yaml.example).
+k8s/secret.yaml
+# Certificados (el CA de Aiven va en DB_SSL_CA, nunca como archivo en el repo).
+*.pem
+*.crt
+*.key
 
 # Perfiles de proveedor para `npm run provider:add`: llevan datos personales reales.
 perfil.json
@@ -21,7 +27,6 @@ dist/
 build/
 *.tsbuildinfo
 .turbo/
-.vercel/
 
 # --- Pruebas -------------------------------------------------------------------------
 coverage/
@@ -39,3 +44,6 @@ npm-debug.log*
 # --- Capturas y salidas de la sesión de desarrollo -----------------------------------
 # Capturas usadas para revisar la interfaz. No son parte del proyecto entregable.
 Claude outputs/
+
+# --- Configuración local de Claude Code -----------------------------------------------
+.claude/

@@ -7,28 +7,31 @@ import { usePathname } from 'next/navigation';
 /**
  * Navegación con indicador de sección activa.
  *
+ * Las secciones las decide el SERVIDOR según el rol (`app/(app)/layout.tsx`) y llegan como
+ * props: este componente no sabe nada de permisos. Ocultar un enlace es comodidad, no
+ * seguridad; cada página vuelve a exigir su permiso con `requirePermiso()`.
+ *
  * El subrayado se dibuja con un pseudo-elemento animado en vez de cambiar el borde: así la
- * transición entre secciones es un deslizamiento y no un parpadeo, que es la diferencia
- * entre que la interfaz se sienta rápida o se sienta brusca.
+ * transición entre secciones es un deslizamiento y no un parpadeo.
  */
-const SECCIONES: { href: Route; etiqueta: string }[] = [
-  { href: '/panel', etiqueta: 'Mis proyectos' },
-  { href: '/proveedor', etiqueta: 'Mi trabajo' },
-];
+export interface Seccion {
+  href: Route;
+  etiqueta: string;
+}
 
-export function Navegacion() {
+export function Navegacion({ secciones }: { secciones: Seccion[] }) {
   const ruta = usePathname();
 
   return (
-    <nav aria-label="Principal" className="flex items-center gap-0.5">
-      {SECCIONES.map((seccion) => {
+    <nav aria-label="Principal" className="flex items-center gap-0.5 overflow-x-auto">
+      {secciones.map((seccion) => {
         const activa = ruta === seccion.href || ruta.startsWith(`${seccion.href}/`);
         return (
           <Link
             key={seccion.href}
             href={seccion.href}
             aria-current={activa ? 'page' : undefined}
-            className="relative rounded-lg px-3 py-1.5 text-sm transition-colors duration-200"
+            className="relative shrink-0 rounded-lg px-3 py-1.5 text-sm whitespace-nowrap transition-colors duration-200"
             style={{ color: activa ? 'var(--color-texto)' : 'var(--color-apagado)' }}
           >
             {seccion.etiqueta}

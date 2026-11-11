@@ -6,6 +6,7 @@
  * servía, y en un sistema sin humanos nadie lo revisa después.
  */
 
+import { ConfiguracionError } from '@/lib/errores';
 import { z } from 'zod';
 
 export const QaConfigSchema = z
@@ -122,10 +123,9 @@ export interface QaConfig {
   maxOutputTokens: number;
 }
 
-export class QaConfigError extends Error {
+export class QaConfigError extends ConfiguracionError {
   constructor(message: string) {
     super(`VEKTORA/QA: ${message}`);
-    this.name = 'QaConfigError';
   }
 }
 

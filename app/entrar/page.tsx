@@ -73,7 +73,7 @@ export default async function Entrar({
           <div className="mb-6 space-y-1.5">
             <h2 className="text-lg font-semibold">Entrá o creá tu cuenta</h2>
             <p className="text-[0.8rem] leading-relaxed text-[var(--color-apagado)]">
-              Si es tu primera vez, completá los datos y tocá <strong>Crear cuenta</strong>.
+              Si es tu primera vez, abrí <strong>Crear una cuenta</strong> y elegí qué vas a hacer.
             </p>
           </div>
 

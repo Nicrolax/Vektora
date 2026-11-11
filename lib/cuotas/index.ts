@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod';
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getDb } from '@/lib/db';
 
 export type AccionLimitada = 'crear_proyecto' | 'alta_proveedor' | 'entregar';
 
@@ -105,15 +105,18 @@ export async function consumirCuota(
 ): Promise<ResultadoCuota> {
   const limite = cuotas[accion];
 
-  const { data, error } = await getSupabaseAdmin().rpc('consume_quota', {
-    p_user_id: userId,
-    p_action: accion,
-    p_limit: limite.limite,
-    p_window_hours: limite.ventanaHoras,
-  });
-
-  if (error !== null) {
-    console.warn(`[vektora/cuota] no se pudo comprobar la cuota -> ${error.message}`);
+  let fila: Record<string, unknown>;
+  try {
+    const resultado = await getDb().one<{ r: Record<string, unknown> | null }>(
+      `select public.consume_quota(
+                p_user_id => $1::uuid, p_action => $2, p_limit => $3::integer,
+                p_window_hours => $4::numeric) as r`,
+      [userId, accion, limite.limite, limite.ventanaHoras],
+    );
+    fila = resultado?.r ?? {};
+  } catch (error) {
+    const motivo = error instanceof Error ? error.message : String(error);
+    console.warn(`[vektora/cuota] no se pudo comprobar la cuota -> ${motivo}`);
     return {
       permitido: true,
       usados: 0,
@@ -123,7 +126,6 @@ export async function consumirCuota(
     };
   }
 
-  const fila = (data ?? {}) as Record<string, unknown>;
   const permitido = fila['permitido'] === true;
   const usados = Number(fila['usados'] ?? 0);
 
@@ -162,11 +164,14 @@ export async function consultarCuota(
   cuotas: Cuotas = cargarCuotas(),
 ): Promise<{ usados: number; limite: number }> {
   const limite = cuotas[accion];
-  const { data, error } = await getSupabaseAdmin().rpc('quota_usage', {
-    p_user_id: userId,
-    p_action: accion,
-    p_window_hours: limite.ventanaHoras,
-  });
-  if (error !== null) return { usados: 0, limite: limite.limite };
-  return { usados: Number(data ?? 0), limite: limite.limite };
+  try {
+    const fila = await getDb().one<{ r: number | null }>(
+      `select public.quota_usage(
+                p_user_id => $1::uuid, p_action => $2, p_window_hours => $3::numeric) as r`,
+      [userId, accion, limite.ventanaHoras],
+    );
+    return { usados: Number(fila?.r ?? 0), limite: limite.limite };
+  } catch {
+    return { usados: 0, limite: limite.limite };
+  }
 }

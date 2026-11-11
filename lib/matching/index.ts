@@ -7,14 +7,14 @@
  *   result.shortlist[0]?.explanation.summary
  */
 
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getDb } from '@/lib/db';
 import { TaskMatcher, type TaskMatcherOptions } from './matcher';
-import { SupabaseMatchingRepository } from './repository';
+import { PostgresMatchingRepository } from './repository';
 
 export { MatchingError, TaskMatcher, renderTaskForMatching } from './matcher';
 export type { MatchTaskInput, MatchTaskResult, TaskMatcherOptions } from './matcher';
 
-export { MatchingRepositoryError, SupabaseMatchingRepository } from './repository';
+export { MatchingRepositoryError, PostgresMatchingRepository } from './repository';
 export type {
   AcceptResult,
   ApplyMatchesResult,
@@ -51,9 +51,9 @@ export {
 } from './config';
 export type { MatchingConfig, MatchingEnv } from './config';
 
-/** Motor listo para usar contra Supabase con `service_role`. */
+/** Motor listo para usar contra PostgreSQL con la identidad de los agentes. */
 export function createTaskMatcher(options: Partial<TaskMatcherOptions> = {}): TaskMatcher {
-  const repository = options.repository ?? new SupabaseMatchingRepository(getSupabaseAdmin());
+  const repository = options.repository ?? new PostgresMatchingRepository(getDb());
   return new TaskMatcher({
     repository,
     ...(options.embeddings === undefined ? {} : { embeddings: options.embeddings }),

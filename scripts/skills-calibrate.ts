@@ -18,7 +18,7 @@ import '@/lib/env';
 
 import { errorMessage } from '@/lib/ai/errors';
 import { getMatchingConfig } from '@/lib/matching';
-import { getSupabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase/admin';
+import { cerrarDb, dbConfigurada, getDb } from '@/lib/db';
 
 interface PairRow {
   slug_a: string;
@@ -74,25 +74,17 @@ interface MeasuredWindow {
  * distintas en la misma pantalla es cómo se acaba pegando la equivocada en `.env.local`.
  */
 async function reportTaskProviderDistances(): Promise<MeasuredWindow | null> {
-  const client = getSupabaseAdmin();
+  const db = getDb();
 
   console.log('\nDistribución TAREA vs PERFIL (la que usa el matching)');
   console.log('─────────────────────────────────────────────────────');
 
-  const [tasks, providers] = await Promise.all([
-    client
-      .from('project_tasks')
-      .select('id, code, title', { count: 'exact' })
-      .not('embedding', 'is', null)
-      .limit(1),
-    client
-      .from('provider_profiles')
-      .select('id', { count: 'exact', head: true })
-      .not('embedding', 'is', null),
-  ]);
-
-  const taskCount = tasks.count ?? 0;
-  const providerCount = providers.count ?? 0;
+  const conteo = await db.one<{ tareas: number; perfiles: number }>(
+    `select (select count(*) from public.project_tasks where embedding is not null) as tareas,
+            (select count(*) from public.provider_profiles where embedding is not null) as perfiles`,
+  );
+  const taskCount = conteo?.tareas ?? 0;
+  const providerCount = conteo?.perfiles ?? 0;
 
   if (taskCount === 0 || providerCount < 2) {
     console.log(
@@ -104,20 +96,24 @@ async function reportTaskProviderDistances(): Promise<MeasuredWindow | null> {
     return null;
   }
 
-  const task = (tasks.data ?? [])[0] as { id: string; code: string; title: string } | undefined;
-  if (task === undefined) return null;
+  const task = await db.one<{ id: string; code: string; title: string }>(
+    'select id, code, title from public.project_tasks where embedding is not null limit 1',
+  );
+  if (task === null) return null;
 
-  const { data, error } = await client.rpc('match_task_candidates', {
-    p_task_id: task.id,
-    p_limit: 50,
-    p_require_auto_assign: false,
-  });
-  if (error !== null) {
-    console.log(`  No se pudo medir -> ${error.message}\n`);
+  let data: Array<{ vector_similarity: number | string | null }>;
+  try {
+    data = await db.query(
+      `select vector_similarity from public.match_task_candidates(
+                p_task_id => $1::uuid, p_limit => 50, p_require_auto_assign => false)`,
+      [task.id],
+    );
+  } catch (error) {
+    console.log(`  No se pudo medir -> ${errorMessage(error)}\n`);
     return null;
   }
 
-  const similarities = ((data ?? []) as Array<{ vector_similarity: number | string | null }>)
+  const similarities = data
     .map((row) => (row.vector_similarity === null ? null : Number(row.vector_similarity)))
     .filter((value): value is number => value !== null && Number.isFinite(value))
     .sort((a, b) => a - b);
@@ -146,8 +142,8 @@ async function reportTaskProviderDistances(): Promise<MeasuredWindow | null> {
 }
 
 async function main(): Promise<void> {
-  if (!isSupabaseAdminConfigured()) {
-    console.error('\nFaltan SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY en .env.local.\n');
+  if (!dbConfigurada()) {
+    console.error('\nFaltan DB_HOST, DB_NAME, DB_USER y/o DB_PASSWORD en .env (ver .env.example).\n');
     process.exitCode = 1;
     return;
   }
@@ -156,22 +152,21 @@ async function main(): Promise<void> {
   console.log(' VEKTORA · calibración del espacio vectorial');
   console.log('══════════════════════════════════════════════════════\n');
 
-  const client = getSupabaseAdmin();
-  const { data, error } = await client.rpc('skill_similarity_pairs', {
-    p_min: 0,
-    p_limit: 10_000,
-  });
-
-  if (error !== null) {
+  let data: PairRow[];
+  try {
+    data = await getDb().query<PairRow>(
+      'select * from public.skill_similarity_pairs(p_min => 0, p_limit => 10000)',
+    );
+  } catch (error) {
     console.error(
-      `No se pudo calcular la matriz -> ${error.message}\n` +
+      `No se pudo calcular la matriz -> ${errorMessage(error)}\n` +
         '(¿falta db/migrations/0004_matching.sql?)\n',
     );
     process.exitCode = 1;
     return;
   }
 
-  const pairs: Pair[] = ((data ?? []) as PairRow[]).map((row) => ({
+  const pairs: Pair[] = data.map((row) => ({
     a: row.slug_a,
     b: row.slug_b,
     similarity: Number(row.similarity),
@@ -293,7 +288,9 @@ async function main(): Promise<void> {
   console.log('\n══════════════════════════════════════════════════════\n');
 }
 
-main().catch((error: unknown) => {
+main()
+  .finally(() => cerrarDb())
+  .catch((error: unknown) => {
   console.error(`\nVEKTORA: la calibración falló -> ${errorMessage(error)}\n`);
   process.exitCode = 1;
 });

@@ -1,7 +1,7 @@
 -- =====================================================================================
 -- VEKTORA · FASE 4 — Verificación de comportamiento del motor de matching
 -- =====================================================================================
--- Sobre base LOCAL desechable. Requiere 00_harness + schema + 0002 + 0003 + seeds + 0004.
+-- Sobre base LOCAL desechable. Requiere db/00_plataforma.sql + schema + 0002 + 0003 + seeds + 0004.
 -- =====================================================================================
 \set ON_ERROR_STOP on
 \pset pager off

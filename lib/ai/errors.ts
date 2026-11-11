@@ -12,6 +12,7 @@
  * falta para diagnosticar en la FASE 7.
  */
 
+import { VektoraError } from '@/lib/errores';
 import type { AiProviderId, AiRunStatus } from './types';
 
 export type AiErrorCode =
@@ -83,7 +84,19 @@ export interface AiErrorInit {
   cause?: unknown;
 }
 
-export class AiError extends Error {
+/** Texto para la persona según la causa. Nunca incluye claves ni respuestas del modelo. */
+const MENSAJE_USUARIO: Readonly<Partial<Record<AiErrorCode, string>>> = {
+  not_configured:
+    'La inteligencia artificial no está configurada en esta instalación (faltan GROQ_API_KEY o GOOGLE_AI_API_KEY).',
+  rate_limit: 'Se agotó por ahora la cuota gratuita de inteligencia artificial. Probá en unos minutos.',
+  timeout: 'El servicio de inteligencia artificial tardó demasiado en responder. Probá de nuevo.',
+  network: 'No se pudo contactar al servicio de inteligencia artificial. Probá de nuevo.',
+  blocked: 'El servicio de inteligencia artificial rechazó el texto. Reformulalo y probá de nuevo.',
+};
+
+export class AiError extends VektoraError {
+  readonly codigo: string = 'inteligencia_artificial';
+  readonly estadoHttp: number = 503;
   readonly code: AiErrorCode;
   readonly provider: AiProviderId | undefined;
   readonly model: string | undefined;
@@ -94,7 +107,6 @@ export class AiError extends Error {
 
   constructor(init: AiErrorInit) {
     super(init.message, init.cause === undefined ? undefined : { cause: init.cause });
-    this.name = 'AiError';
     this.code = init.code;
     this.provider = init.provider;
     this.model = init.model;
@@ -102,6 +114,13 @@ export class AiError extends Error {
     this.retryAfterMs = init.retryAfterMs;
     this.status = init.status;
     this.details = init.details;
+  }
+
+  override get mensajeUsuario(): string {
+    return (
+      MENSAJE_USUARIO[this.code] ??
+      'El servicio de inteligencia artificial no pudo completar la operación. Probá de nuevo en unos minutos.'
+    );
   }
 
   /** Línea compacta para logs; nunca incluye credenciales. */
@@ -144,8 +163,13 @@ export class AiExhaustedError extends AiError {
       retryable: false,
       details: failures,
     });
-    this.name = 'AiExhaustedError';
     this.failures = [...failures];
+  }
+
+  override get mensajeUsuario(): string {
+    if (this.failures.length === 0) return MENSAJE_USUARIO.not_configured ?? super.mensajeUsuario;
+    const ultimo = this.lastFailure?.code;
+    return (ultimo === undefined ? undefined : MENSAJE_USUARIO[ultimo]) ?? super.mensajeUsuario;
   }
 
   /** Causa del último intento: es la que describe de verdad por qué se agotó. */

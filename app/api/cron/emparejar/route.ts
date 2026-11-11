@@ -12,7 +12,8 @@ import { NextResponse } from 'next/server';
 import { errorMessage } from '@/lib/ai/errors';
 import { autorizarCron } from '@/lib/cron/autorizacion';
 import { createTaskMatcher } from '@/lib/matching';
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getDb } from '@/lib/db';
+import { mensajeParaUsuario } from '@/lib/errores';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -25,34 +26,35 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: autorizacion.motivo }, { status: autorizacion.estado });
   }
 
-  const { data, error } = await getSupabaseAdmin()
-    .from('project_tasks')
-    .select('id, code, projects!inner(title)')
-    .is('assignee_id', null)
-    .in('status', ['ready', 'open', 'matching'])
-    .order('created_at', { ascending: true })
-    .limit(MAXIMO_POR_CORRIDA);
-
-  if (error !== null) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  let pendientes: Array<{ id: string; code: string; proyecto: string }>;
+  try {
+    // Como dueño de las tablas: es un agente autónomo, no una persona. Las tareas de
+    // proyectos pausados o cancelados no se emparejan.
+    pendientes = await getDb().query<{ id: string; code: string; proyecto: string }>(
+      `select t.id, t.code, p.title as proyecto
+         from public.project_tasks t
+         join public.projects p on p.id = t.project_id
+        where t.assignee_id is null
+          and t.status in ('ready', 'open', 'matching')
+          and p.status not in ('paused', 'cancelled', 'completed')
+        order by t.created_at asc
+        limit $1`,
+      [MAXIMO_POR_CORRIDA],
+    );
+  } catch (error) {
+    return NextResponse.json({ error: mensajeParaUsuario(error) }, { status: 500 });
   }
 
-  const pendientes = (data ?? []) as unknown as Array<{
-    id: string;
-    code: string;
-    projects: { title: string } | { title: string }[];
-  }>;
   const matcher = createTaskMatcher();
   const resultados: Array<Record<string, unknown>> = [];
 
   for (const tarea of pendientes) {
     try {
       const resultado = await matcher.matchTask({ taskId: tarea.id, assign: true });
-      const proyecto = Array.isArray(tarea.projects) ? tarea.projects[0] : tarea.projects;
       resultados.push({
         code: tarea.code,
         // Dos proyectos pueden tener su propia T-01; sin el título, la traza es ambigua.
-        proyecto: proyecto?.title ?? null,
+        proyecto: tarea.proyecto,
         candidatos: resultado.candidates,
         adjudicada: resultado.assigned !== null,
         escalada: resultado.escalated,

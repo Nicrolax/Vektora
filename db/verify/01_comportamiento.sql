@@ -4,7 +4,7 @@
 -- Se ejecuta sobre una base LOCAL desechable, nunca contra Supabase: crea proyectos,
 -- usuarios y skills de prueba.
 --
---   psql ... -f db/verify/00_harness.sql
+--   psql ... -f db/00_plataforma.sql
 --   psql ... -f db/schema.sql
 --   psql ... -f db/migrations/0002_planner.sql
 --   psql ... -f db/migrations/0003_provider_onboarding.sql
@@ -136,6 +136,9 @@ begin
 end $$;
 
 \echo '=== 10. anon puede leer el catalogo de skills (regresion de la FASE 3)'
+-- Dentro de una transacción: `SET LOCAL` fuera de ella no tiene efecto y la consulta
+-- correría como superusuario, sin probar nada.
+begin;
 set local role anon;
-select count(*) as skills_visibles_anon from public.skills;
-reset role;
+select current_user as rol, count(*) as skills_visibles_anon from public.skills;
+rollback;

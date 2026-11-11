@@ -1,7 +1,7 @@
 -- =====================================================================================
 -- VEKTORA · FASE 7 — Verificación de la escalada y de las cuotas
 -- =====================================================================================
--- Sobre base LOCAL desechable. Requiere 00_harness + schema + 0002..0007.
+-- Sobre base LOCAL desechable. Requiere db/00_plataforma.sql + schema + 0002..0007.
 -- =====================================================================================
 \set ON_ERROR_STOP on
 \pset pager off

@@ -13,6 +13,7 @@
  * se falla — el mismo criterio que en el planificador.
  */
 
+import { DominioError } from '@/lib/errores';
 import { getEmbeddingService, toPgVector, type EmbeddingService } from '@/lib/ai/embeddings';
 import { errorMessage, isAiError } from '@/lib/ai/errors';
 import type {
@@ -24,10 +25,9 @@ import type {
 import { RegisterProviderSchema, type RegisterProviderInput } from './schemas';
 import { SkillResolver } from './skills';
 
-export class ProviderError extends Error {
+export class ProviderError extends DominioError {
   constructor(message: string, cause?: unknown) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = 'ProviderError';
   }
 }
 
@@ -155,8 +155,8 @@ export class ProviderOnboarding {
     if (found === null) {
       const reference = userId ?? email ?? '(sin referencia)';
       throw new ProviderError(
-        `VEKTORA/PROVIDER: no existe la cuenta ${reference} en public.users. Créala en ` +
-          'Supabase Auth: el trigger del bootstrap la proyecta a public.users.',
+        `VEKTORA/PROVIDER: no existe la cuenta ${reference} en public.users. Creala desde ` +
+          '/entrar (Crear una cuenta): el trigger del bootstrap la proyecta a public.users.',
       );
     }
     if (found.status !== 'active') {

@@ -18,6 +18,7 @@
  * proveedor reintentar. Rechazar ahí sería cobrarle a otro nuestra avería.
  */
 
+import { DominioError } from '@/lib/errores';
 import { getAiClient, type AiClient } from '@/lib/ai';
 import { errorMessage } from '@/lib/ai/errors';
 import { getQaConfig, type QaConfig } from './config';
@@ -38,10 +39,9 @@ import {
 import { buildQaVerdictSchema, parseAcceptanceCriteria, type StoredCriterion } from './schemas';
 import { QA_SYSTEM_PROMPT, renderJudgePrompt } from './prompts';
 
-export class QaError extends Error {
+export class QaError extends DominioError {
   constructor(message: string, cause?: unknown) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = 'QaError';
   }
 }
 

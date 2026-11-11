@@ -1,46 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/auth/session';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { toNumber, type PgNumeric } from '@/lib/supabase/types';
+import { obtenerTarea } from '@/lib/consultas';
+import { esUuid } from '@/lib/db';
+import { ESTADOS_ENTREGABLES } from '@/lib/entregas';
 import { Dato, Dinero, EnlaceBoton, Insignia, Panel, Titulo, Vacio } from '@/components/ui/primitivas';
-
-interface Criterio {
-  id: string;
-  criterion: string;
-  verification?: string;
-}
-
-interface Candidatura {
-  id: string;
-  provider_id: string;
-  status: string;
-  match_score: PgNumeric | null;
-  vector_score: PgNumeric | null;
-  skill_score: PgNumeric | null;
-  reputation_score: PgNumeric | null;
-  match_explanation: { summary?: string } | null;
-}
-
-interface Entregable {
-  id: string;
-  version: number;
-  summary: string | null;
-  qa_status: string;
-  qa_score: PgNumeric | null;
-  qa_feedback: { summary?: string; blockingIssues?: string[] } | null;
-  qa_criteria_results: Array<{
-    id: string;
-    outcome: string;
-    reported: string;
-    confidence: number;
-    evidence: string;
-    reasoning: string;
-    downgraded: boolean;
-  }> | null;
-  submitted_at: string;
-  qa_evaluated_at: string | null;
-}
 
 const ICONO: Record<string, string> = { pass: '✓', fail: '✗', unverifiable: '?' };
 const COLOR: Record<string, string> = {
@@ -52,63 +16,24 @@ const COLOR: Record<string, string> = {
 export default async function DetalleTarea({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
-  const supabase = await getSupabaseServer();
+  if (!esUuid(id)) notFound();
 
-  const { data, error } = await supabase
-    .from('project_tasks')
-    .select(
-      'id, project_id, code, title, description, acceptance_criteria, required_skills, status, budget, estimated_hours, assignee_id, projects!inner(title)',
-    )
-    .eq('id', id)
-    .maybeSingle();
-
-  if (error !== null || data === null) notFound();
-
-  const tarea = data as unknown as {
-    project_id: string;
-    code: string;
-    title: string;
-    description: string | null;
-    acceptance_criteria: Criterio[];
-    required_skills: string[];
-    status: string;
-    budget: PgNumeric | null;
-    estimated_hours: PgNumeric | null;
-    assignee_id: string | null;
-    projects: { title: string } | { title: string }[];
-  };
-  const proyecto = Array.isArray(tarea.projects) ? tarea.projects[0] : tarea.projects;
-
-  const [candidaturas, entregables] = await Promise.all([
-    supabase
-      .from('task_applications')
-      .select(
-        'id, provider_id, status, match_score, vector_score, skill_score, reputation_score, match_explanation',
-      )
-      .eq('task_id', id)
-      .order('match_score', { ascending: false, nullsFirst: false }),
-    supabase
-      .from('deliverables')
-      .select(
-        'id, version, summary, qa_status, qa_score, qa_feedback, qa_criteria_results, submitted_at, qa_evaluated_at',
-      )
-      .eq('task_id', id)
-      .order('version', { ascending: false }),
-  ]);
-
-  const listaCandidaturas = (candidaturas.data ?? []) as unknown as Candidatura[];
-  const listaEntregables = (entregables.data ?? []) as unknown as Entregable[];
-  const criterios = Array.isArray(tarea.acceptance_criteria) ? tarea.acceptance_criteria : [];
-  const soyProveedor = tarea.assignee_id === user.id;
+  const datos = await obtenerTarea(user.id, id);
+  if (datos === null) notFound();
+  const { tarea, candidaturas: listaCandidaturas, entregables: listaEntregables } = datos;
+  const criterios = tarea.acceptanceCriteria;
+  // El botón solo aparece si la tarea admite una entrega ahora (la acción lo vuelve a comprobar).
+  const soyProveedor =
+    tarea.assigneeId === user.id && (ESTADOS_ENTREGABLES as readonly string[]).includes(tarea.status);
 
   return (
     <div className="space-y-6">
       <header className="space-y-3">
         <Link
-          href={`/proyectos/${tarea.project_id}`}
+          href={`/proyectos/${tarea.projectId}`}
           className="text-xs text-[var(--color-apagado)] transition-colors hover:text-[var(--color-tenue)]"
         >
-          ← {proyecto?.title ?? 'Proyecto'}
+          ← {tarea.projectTitle}
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
@@ -131,16 +56,16 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
 
       <Panel className="p-4">
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Dato etiqueta="Presupuesto" valor={<Dinero valor={toNumber(tarea.budget)} />} />
+          <Dato etiqueta="Presupuesto" valor={<Dinero valor={tarea.budget} />} />
           <Dato
             etiqueta="Esfuerzo estimado"
-            valor={`${toNumber(tarea.estimated_hours) ?? '—'} h`}
+            valor={`${tarea.estimatedHours ?? '—'} h`}
           />
           <Dato etiqueta="Criterios" valor={String(criterios.length)} />
           <Dato
             etiqueta="Habilidades"
             valor={
-              <span className="font-mono text-xs">{(tarea.required_skills ?? []).join(', ')}</span>
+              <span className="font-mono text-xs">{tarea.requiredSkills.join(', ')}</span>
             }
           />
         </dl>
@@ -185,18 +110,20 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-medium tabular-nums">
-                  {(toNumber(candidatura.match_score) ?? 0).toFixed(4)}
+                  {(candidatura.matchScore ?? 0).toFixed(4)}
                 </span>
-                <span className="text-xs text-[var(--color-apagado)]">{candidatura.status}</span>
+                <span className="text-xs text-[var(--color-apagado)]">
+                  {candidatura.proveedor ?? 'proveedor'} · {candidatura.status}
+                </span>
               </div>
               <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[var(--color-tenue)]">
-                <span>afinidad {(toNumber(candidatura.vector_score) ?? 0).toFixed(3)}</span>
-                <span>habilidades {(toNumber(candidatura.skill_score) ?? 0).toFixed(3)}</span>
-                <span>reputación {(toNumber(candidatura.reputation_score) ?? 0).toFixed(3)}</span>
+                <span>afinidad {(candidatura.vectorScore ?? 0).toFixed(3)}</span>
+                <span>habilidades {(candidatura.skillScore ?? 0).toFixed(3)}</span>
+                <span>reputación {(candidatura.reputationScore ?? 0).toFixed(3)}</span>
               </dl>
-              {candidatura.match_explanation?.summary !== undefined && (
+              {candidatura.resumen !== null && (
                 <p className="mt-2 text-xs leading-relaxed text-[var(--color-apagado)]">
-                  {candidatura.match_explanation.summary}
+                  {candidatura.resumen}
                 </p>
               )}
             </div>
@@ -220,11 +147,11 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
                   <span className="font-mono text-xs text-[var(--color-apagado)]">
                     v{entregable.version}
                   </span>
-                  <Insignia estado={entregable.qa_status} tipo="qa" />
+                  <Insignia estado={entregable.qaStatus} tipo="qa" />
                 </div>
-                {entregable.qa_score !== null && (
+                {entregable.qaScore !== null && (
                   <span className="text-sm tabular-nums">
-                    {(toNumber(entregable.qa_score) ?? 0).toFixed(2)} / 100
+                    {entregable.qaScore.toFixed(2)} / 100
                   </span>
                 )}
               </div>
@@ -233,15 +160,15 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
                 <p className="mt-2.5 text-sm leading-relaxed">{entregable.summary}</p>
               )}
 
-              {entregable.qa_feedback?.summary !== undefined && (
+              {entregable.qaResumen !== null && (
                 <p className="mt-3 rounded-md border-l-2 border-[var(--color-acento)] bg-[var(--color-panel)] px-3 py-2 text-xs leading-relaxed text-[var(--color-tenue)]">
-                  {entregable.qa_feedback.summary}
+                  {entregable.qaResumen}
                 </p>
               )}
 
-              {(entregable.qa_criteria_results ?? []).length > 0 && (
+              {entregable.criterios.length > 0 && (
                 <ul className="mt-3 space-y-2.5 border-t border-[var(--color-borde)] pt-3">
-                  {(entregable.qa_criteria_results ?? []).map((resultado) => (
+                  {entregable.criterios.map((resultado) => (
                     <li key={resultado.id} className="flex gap-2.5">
                       <span
                         aria-hidden

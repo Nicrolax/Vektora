@@ -23,7 +23,7 @@ import '@/lib/env';
 
 import { readFile } from 'node:fs/promises';
 import { errorMessage } from '@/lib/ai/errors';
-import { getSupabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase/admin';
+import { cerrarDb, dbConfigurada, getDb, json } from '@/lib/db';
 
 interface Submission {
   summary: string | null;
@@ -49,21 +49,24 @@ function criterionIds(raw: unknown): string[] {
 }
 
 async function listAssignedTasks(): Promise<void> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('project_tasks')
-    .select('id, code, title, status, assignee_id, acceptance_criteria, projects!inner(title)')
-    .not('assignee_id', 'is', null)
-    .in('status', ['assigned', 'in_progress', 'revision_requested', 'submitted'])
-    .order('created_at', { ascending: true })
-    .limit(40);
-
-  if (error !== null) {
-    console.error(`\nNo se pudieron leer las tareas -> ${error.message}\n`);
+  let rows: Array<Record<string, unknown>>;
+  try {
+    rows = await getDb().query(
+      `select t.id, t.code, t.title, t.status, t.assignee_id, t.acceptance_criteria,
+              p.title as project_title
+         from public.project_tasks t
+         join public.projects p on p.id = t.project_id
+        where t.assignee_id is not null
+          and t.status in ('assigned', 'in_progress', 'revision_requested', 'submitted')
+        order by t.created_at
+        limit 40`,
+    );
+  } catch (error) {
+    console.error(`\nNo se pudieron leer las tareas -> ${errorMessage(error)}\n`);
     process.exitCode = 1;
     return;
   }
 
-  const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
   if (rows.length === 0) {
     console.log(
       '\nNo hay ninguna tarea asignada esperando entrega.\n' +
@@ -74,10 +77,7 @@ async function listAssignedTasks(): Promise<void> {
 
   console.log('\nTareas asignadas:\n');
   for (const row of rows) {
-    const project = row['projects'];
-    const projectTitle = Array.isArray(project)
-      ? String((project[0] as Record<string, unknown> | undefined)?.['title'] ?? '')
-      : String((project as Record<string, unknown> | null)?.['title'] ?? '');
+    const projectTitle = String(row['project_title'] ?? '');
     const ids = criterionIds(row['acceptance_criteria']);
     console.log(`  ${String(row['id'])}`);
     console.log(
@@ -99,14 +99,15 @@ async function listAssignedTasks(): Promise<void> {
  * que entregar. Se invoca con `npm run deliver -- <task_id>`, sin archivo.
  */
 async function showCriteria(taskId: string): Promise<void> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('project_tasks')
-    .select('code, title, description, status, budget, estimated_hours, acceptance_criteria')
-    .eq('id', taskId)
-    .maybeSingle();
-
-  if (error !== null) {
-    console.error(`\nNo se pudo leer la tarea -> ${error.message}\n`);
+  let data: Record<string, unknown> | null;
+  try {
+    data = await getDb().one(
+      `select code, title, description, status, budget, estimated_hours, acceptance_criteria
+         from public.project_tasks where id = $1`,
+      [taskId],
+    );
+  } catch (error) {
+    console.error(`\nNo se pudo leer la tarea -> ${errorMessage(error)}\n`);
     process.exitCode = 1;
     return;
   }
@@ -116,7 +117,7 @@ async function showCriteria(taskId: string): Promise<void> {
     return;
   }
 
-  const row = data as unknown as Record<string, unknown>;
+  const row = data;
   console.log(`\n=== ${String(row['code'])} · ${String(row['title'])} ===\n`);
   line('estado:', String(row['status']));
   line('presupuesto / horas:', `${String(row['budget'])} / ${String(row['estimated_hours'])} h`);
@@ -174,26 +175,26 @@ async function readSubmission(path: string): Promise<Submission> {
 }
 
 async function submit(taskId: string, submission: Submission): Promise<void> {
-  const client = getSupabaseAdmin();
+  const db = getDb();
 
-  const task = await client
-    .from('project_tasks')
-    .select('id, code, title, status, assignee_id, acceptance_criteria')
-    .eq('id', taskId)
-    .maybeSingle();
-
-  if (task.error !== null) {
-    console.error(`\nNo se pudo leer la tarea -> ${task.error.message}\n`);
+  let task: Record<string, unknown> | null;
+  try {
+    task = await db.one(
+      'select id, code, title, status, assignee_id, acceptance_criteria from public.project_tasks where id = $1',
+      [taskId],
+    );
+  } catch (error) {
+    console.error(`\nNo se pudo leer la tarea -> ${errorMessage(error)}\n`);
     process.exitCode = 1;
     return;
   }
-  if (task.data === null) {
+  if (task === null) {
     console.error(`\nNo existe ninguna tarea con id ${taskId}\n`);
     process.exitCode = 1;
     return;
   }
 
-  const row = task.data as unknown as Record<string, unknown>;
+  const row = task;
   const assignee = row['assignee_id'];
   if (typeof assignee !== 'string' || assignee === '') {
     console.error(
@@ -226,54 +227,46 @@ async function submit(taskId: string, submission: Submission): Promise<void> {
     console.log(`\n  ! la entrega no declara evidencia por criterio (${ids.join(', ')})`);
   }
 
-  const inserted = await client
-    .from('deliverables')
-    .insert({
-      task_id: taskId,
-      provider_id: assignee,
-      summary: submission.summary,
-      content: submission.content,
-      artifacts: submission.artifacts,
-      evidence: submission.evidence,
-    })
-    .select('id, version, qa_status')
-    .single();
-
-  if (inserted.error !== null) {
-    console.error(`\nNo se pudo registrar la entrega -> ${inserted.error.message}\n`);
+  // Entregable + cambio de estado en UNA transacción (R7): si el UPDATE falla, el INSERT
+  // se deshace y no queda un entregable sin tarea en `submitted`.
+  let deliverable: { id: string; version: number; qa_status: string };
+  try {
+    deliverable = await db.transaction(async (tx) => {
+      const fila = await tx.one<{ id: string; version: number; qa_status: string }>(
+        `insert into public.deliverables (task_id, provider_id, summary, content, artifacts, evidence)
+         values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+         returning id, version, qa_status`,
+        [taskId, assignee, submission.summary, submission.content, json(submission.artifacts), json(submission.evidence)],
+      );
+      if (fila === null) throw new Error('el insert no devolvió el entregable');
+      await tx.execute(
+        `update public.project_tasks set status = 'submitted'
+          where id = $1 and status in ('assigned', 'in_progress', 'revision_requested')`,
+        [taskId],
+      );
+      return fila;
+    });
+  } catch (error) {
+    console.error(`\nNo se pudo registrar la entrega -> ${errorMessage(error)}\n`);
     process.exitCode = 1;
     return;
   }
 
-  const deliverable = inserted.data as unknown as Record<string, unknown>;
-
-  // La tarea pasa a `submitted`: es el estado que dice "entregado, esperando juicio".
-  // Si falla, la entrega ya está escrita y el juez puede recogerla igual — se avisa y no
-  // se aborta, porque perder el entregable sería mucho peor que un estado desactualizado.
-  const moved = await client
-    .from('project_tasks')
-    .update({ status: 'submitted' })
-    .eq('id', taskId)
-    .in('status', ['assigned', 'in_progress', 'revision_requested']);
-  if (moved.error !== null) {
-    console.log(`  · aviso: la tarea no cambió a "submitted" -> ${moved.error.message}`);
-  }
-
   console.log('\n=== Entrega registrada ===\n');
   line('tarea:', `${String(row['code'])} · ${String(row['title'])}`);
-  line('entregable:', String(deliverable['id']));
-  line('versión:', String(deliverable['version']));
-  line('estado QA:', String(deliverable['qa_status']));
+  line('entregable:', String(deliverable.id));
+  line('versión:', String(deliverable.version));
+  line('estado QA:', String(deliverable.qa_status));
   line('criterios a evaluar:', ids.length === 0 ? '0' : `${ids.length} (${ids.join(', ')})`);
   line('evidencia aportada:', String(Object.keys(submission.evidence).length));
   console.log('\nEvaluarlo:');
-  console.log(`  npm run qa -- ${String(deliverable['id'])} --dry-run`);
-  console.log(`  npm run qa -- ${String(deliverable['id'])}\n`);
+  console.log(`  npm run qa -- ${String(deliverable.id)} --dry-run`);
+  console.log(`  npm run qa -- ${String(deliverable.id)}\n`);
 }
 
 async function main(): Promise<void> {
-  if (!isSupabaseAdminConfigured()) {
-    console.error('\nFaltan SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY en .env.local.\n');
+  if (!dbConfigurada()) {
+    console.error('\nFaltan DB_HOST, DB_NAME, DB_USER y/o DB_PASSWORD en .env (ver .env.example).\n');
     process.exitCode = 1;
     return;
   }
@@ -303,7 +296,9 @@ async function main(): Promise<void> {
   await submit(taskId, await readSubmission(path));
 }
 
-main().catch((error: unknown) => {
+main()
+  .finally(() => cerrarDb())
+  .catch((error: unknown) => {
   console.error(`\nVEKTORA/DELIVER: falló -> ${errorMessage(error)}\n`);
   process.exitCode = 1;
 });

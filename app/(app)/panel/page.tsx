@@ -1,36 +1,51 @@
 import Link from 'next/link';
+import { tienePermiso } from '@/lib/auth';
 import { requireUser } from '@/lib/auth/session';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { Avance, Dinero, EnlaceBoton, Vacio } from '@/components/ui/primitivas';
+import { listarMisProyectos, type ProyectoResumen } from '@/lib/consultas';
+import { mensajeParaUsuario } from '@/lib/errores';
+import { Aviso, Avance, Dinero, EnlaceBoton, Vacio } from '@/components/ui/primitivas';
 import { presentarProyecto } from '@/components/estados';
-import { toNumber, type PgNumeric } from '@/lib/supabase/types';
 
 export const metadata = { title: 'Mis proyectos' };
 
-interface FilaProyecto {
-  id: string;
-  title: string;
-  objective: string;
-  status: string;
-  budget_total: PgNumeric | null;
-  currency: string;
-  created_at: string;
-  project_tasks: { status: string }[];
-}
+export default async function PanelCliente({
+  searchParams,
+}: {
+  searchParams: Promise<{ aviso?: string }>;
+}) {
+  const user = await requireUser();
+  const { aviso } = await searchParams;
 
-export default async function PanelCliente() {
-  await requireUser();
+  // Una cuenta solo de proveedor no publica proyectos: se la orienta en vez de mostrarle un
+  // botón que fallaría.
+  if (!tienePermiso(user.role, 'proyectos:crear')) {
+    return (
+      <div className="mx-auto max-w-xl space-y-5 py-10 text-center">
+        {aviso !== undefined && <Aviso tipo="info">{aviso}</Aviso>}
+        <h1 className="text-xl font-semibold tracking-tight">Tu cuenta es de proveedor</h1>
+        <p className="text-sm leading-relaxed text-[var(--color-apagado)]">
+          Las tareas te llegan solas cuando encajás. Revisá lo que tenés asignado o buscá tareas
+          abiertas.
+        </p>
+        <div className="flex justify-center gap-3">
+          <EnlaceBoton href="/proveedor" variante="primario">
+            Mi trabajo
+          </EnlaceBoton>
+          <EnlaceBoton href="/buscar">Buscar tareas</EnlaceBoton>
+        </div>
+      </div>
+    );
+  }
 
-  // Se lee con la sesión del usuario, no con la clave de servicio: si esta consulta no
-  // devuelve un proyecto es porque las políticas de la base no dejan verlo, no porque el
-  // código se haya acordado de filtrar por propietario.
-  const supabase = await getSupabaseServer();
-  const { data, error } = await supabase
-    .from('projects')
-    .select('id, title, objective, status, budget_total, currency, created_at, project_tasks(status)')
-    .order('created_at', { ascending: false });
-
-  const proyectos = (data ?? []) as unknown as FilaProyecto[];
+  // Se lee como la persona: si un proyecto no aparece es porque RLS no deja verlo, no
+  // porque el código se haya acordado de filtrar por dueño.
+  let proyectos: ProyectoResumen[] = [];
+  let error: string | null = null;
+  try {
+    proyectos = await listarMisProyectos(user.id);
+  } catch (causa) {
+    error = mensajeParaUsuario(causa);
+  }
 
   return (
     <div className="space-y-7">
@@ -46,19 +61,8 @@ export default async function PanelCliente() {
         </EnlaceBoton>
       </div>
 
-      {error !== null && (
-        <p
-          role="alert"
-          className="rounded-xl border px-3.5 py-2.5 text-sm"
-          style={{
-            borderColor: 'color-mix(in oklch, var(--color-fallida) 40%, transparent)',
-            backgroundColor: 'color-mix(in oklch, var(--color-fallida) 12%, transparent)',
-            color: 'var(--color-fallida)',
-          }}
-        >
-          No se pudieron leer los proyectos: {error.message}
-        </p>
-      )}
+      {aviso !== undefined && <Aviso tipo="info">{aviso}</Aviso>}
+      {error !== null && <Aviso tipo="error">{error}</Aviso>}
 
       {proyectos.length === 0 && error === null && (
         <div className="entra" style={{ animationDelay: '80ms' }}>
@@ -69,17 +73,16 @@ export default async function PanelCliente() {
               </EnlaceBoton>
             }
           >
-            Todavía no tenés ningún proyecto. Escribí en una frase qué necesitás y mirá cómo
-            se arma el grafo de tareas.
+            Todavía no tenés ningún proyecto. Escribí en una frase qué necesitás y mirá cómo se
+            arma el grafo de tareas.
           </Vacio>
         </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {proyectos.map((proyecto, indice) => {
-          const tareas = proyecto.project_tasks ?? [];
-          const aprobadas = tareas.filter((tarea) => tarea.status === 'approved').length;
-          const avance = tareas.length === 0 ? 0 : Math.round((aprobadas / tareas.length) * 100);
+          const avance =
+            proyecto.totalTareas === 0 ? 0 : Math.round((proyecto.aprobadas / proyecto.totalTareas) * 100);
 
           return (
             <Link
@@ -89,9 +92,7 @@ export default async function PanelCliente() {
               style={{ animationDelay: `${60 + indice * 55}ms` }}
             >
               <div className="flex items-start justify-between gap-3">
-                <h2 className="text-[0.95rem] leading-snug font-medium text-balance">
-                  {proyecto.title}
-                </h2>
+                <h2 className="text-[0.95rem] leading-snug font-medium text-balance">{proyecto.title}</h2>
                 <span className="shrink-0 rounded-full bg-[var(--color-lienzo-alto)] px-2.5 py-1 text-[0.7rem] text-[var(--color-apagado)]">
                   {presentarProyecto(proyecto.status)}
                 </span>
@@ -105,14 +106,12 @@ export default async function PanelCliente() {
                 <Avance porcentaje={avance} etiqueta="Tareas aprobadas" />
                 <div className="flex items-center justify-between text-xs text-[var(--color-apagado)]">
                   <span>
-                    {tareas.length === 0
+                    {proyecto.totalTareas === 0
                       ? 'sin tareas todavía'
-                      : `${aprobadas} de ${tareas.length} aprobadas`}
+                      : `${proyecto.aprobadas} de ${proyecto.totalTareas} aprobadas`}
+                    {proyecto.visibility === 'public' && ' · público'}
                   </span>
-                  <Dinero
-                    valor={toNumber(proyecto.budget_total)}
-                    moneda={proyecto.currency ?? 'USD'}
-                  />
+                  <Dinero valor={proyecto.budgetTotal} moneda={proyecto.currency} />
                 </div>
               </div>
             </Link>

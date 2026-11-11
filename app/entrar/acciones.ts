@@ -1,91 +1,79 @@
 'use server';
 
 /**
- * VEKTORA · FASE 6 — Alta y acceso (RF-1.1).
+ * VEKTORA — Alta y acceso (presentación → servicio).
  *
- * Correo y contraseña, y no enlace mágico, por una razón operativa: el enlace mágico obliga
- * a salir de la aplicación, abrir el correo y volver. En una demostración en vivo eso es una
- * dependencia externa que puede fallar delante de todo el mundo.
+ * La acción solo traduce el formulario y la respuesta HTTP; las reglas viven en
+ * `AuthService` (lib/auth/servicio.ts): BCrypt, mensaje único para credenciales
+ * incorrectas, cuentas suspendidas y roles que se pueden elegir.
  *
- * El perfil en `public.users` NO se crea aquí. Lo crea el disparador `handle_new_auth_user`
- * de la base al confirmarse la cuenta (RF-1.2): si dependiera de este código, un alta que
- * fallara a mitad dejaría una cuenta sin perfil.
+ * El perfil en `public.users` NO se crea acá: lo crea el trigger `handle_new_auth_user` al
+ * insertar en `auth.users`. Si dependiera de este código, un alta que fallara a mitad
+ * dejaría una cuenta sin perfil.
  */
 
 import { redirect } from 'next/navigation';
-import { z } from 'zod';
-import { getSupabaseServer } from '@/lib/supabase/server';
+import type { Route } from 'next';
+import { crearAuthService, esRol, tienePermiso } from '@/lib/auth';
+import { abrirSesion, cerrarSesionActual } from '@/lib/auth/session';
+import { mensajeParaUsuario } from '@/lib/errores';
 import { validarCorreo } from '@/lib/validacion/entrada';
 
 /**
- * Al REGISTRARSE se exige un correo real; al ENTRAR no se comprueba nada de esto.
- *
- * La asimetría es deliberada: si endureciéramos también el inicio de sesión, alguien que se
- * registró antes de añadir un dominio a la lista quedaría fuera de su propia cuenta.
+ * Al REGISTRARSE se exige un correo real; al ENTRAR no se comprueba nada de esto. La
+ * asimetría es deliberada: endurecer también el inicio de sesión dejaría afuera a quien se
+ * registró antes de que un dominio entrara en la lista.
  */
 const CORREO_ESTRICTO = { bloquearDesechables: true, bloquearReservados: true } as const;
 
-const CredencialesSchema = z.object({
-  email: z.string().trim().min(1, 'Falta el correo').pipe(z.email('El correo no es válido')),
-  password: z.string().min(8, 'La contraseña necesita al menos 8 caracteres'),
-});
-
-function primerError(error: z.ZodError): string {
-  return error.issues[0]?.message ?? 'Los datos no son válidos';
+function volverConError(mensaje: string): never {
+  redirect(`/entrar?error=${encodeURIComponent(mensaje)}` as Route);
 }
 
-function volverConError(mensaje: string): never {
-  redirect(`/entrar?error=${encodeURIComponent(mensaje)}`);
+function texto(formData: FormData, campo: string): string {
+  const valor = formData.get(campo);
+  return typeof valor === 'string' ? valor : '';
 }
 
 export async function iniciarSesion(formData: FormData): Promise<void> {
-  const parsed = CredencialesSchema.safeParse({
-    email: formData.get('email'),
-    password: formData.get('password'),
-  });
-  if (!parsed.success) volverConError(primerError(parsed.error));
-
-  const supabase = await getSupabaseServer();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
-
-  if (error !== null) {
-    // Mensaje deliberadamente genérico: distinguir «no existe» de «contraseña incorrecta»
-    // permitiría averiguar qué correos están registrados.
-    volverConError('Correo o contraseña incorrectos');
+  let destino: Route = '/panel';
+  try {
+    const usuario = await crearAuthService().iniciarSesion(texto(formData, 'email'), texto(formData, 'password'));
+    await abrirSesion(usuario.id);
+    // Una cuenta solo de proveedor no publica proyectos: entra directo a su trabajo.
+    if (!tienePermiso(usuario.role, 'proyectos:crear')) destino = '/proveedor';
+  } catch (error) {
+    volverConError(mensajeParaUsuario(error));
   }
-
-  redirect('/panel');
+  // `redirect` fuera del try: internamente lanza, y un catch se lo tragaría.
+  redirect(destino);
 }
 
 export async function registrarse(formData: FormData): Promise<void> {
-  const parsed = CredencialesSchema.safeParse({
-    email: formData.get('email'),
-    password: formData.get('password'),
-  });
-  if (!parsed.success) volverConError(primerError(parsed.error));
+  const email = texto(formData, 'email');
+  const correo = validarCorreo(email, CORREO_ESTRICTO);
+  if (!correo.valido) volverConError(correo.motivo ?? 'El correo no es válido.');
 
-  const correo = validarCorreo(parsed.data.email, CORREO_ESTRICTO);
-  if (!correo.valido) volverConError(correo.motivo ?? 'El correo no es válido');
+  const rol = texto(formData, 'role');
+  if (!esRol(rol)) volverConError('Elegí si querés publicar proyectos, ofrecer tu trabajo o ambas.');
 
-  const supabase = await getSupabaseServer();
-  const { data, error } = await supabase.auth.signUp(parsed.data);
-
-  if (error !== null) volverConError(error.message);
-
-  // Sin sesión inmediata significa que el proyecto exige confirmar el correo.
-  if (data.session === null) {
-    redirect(
-      `/entrar?aviso=${encodeURIComponent(
-        'Cuenta creada. Confirmá el correo que te enviamos y volvé a entrar.',
-      )}`,
-    );
+  let destino: Route = '/panel';
+  try {
+    const usuario = await crearAuthService().registrar({
+      email,
+      contrasena: texto(formData, 'password'),
+      role: rol,
+      nombre: texto(formData, 'nombre'),
+    });
+    await abrirSesion(usuario.id);
+    if (!tienePermiso(usuario.role, 'proyectos:crear')) destino = '/proveedor/alta';
+  } catch (error) {
+    volverConError(mensajeParaUsuario(error));
   }
-
-  redirect('/panel');
+  redirect(destino);
 }
 
 export async function cerrarSesion(): Promise<void> {
-  const supabase = await getSupabaseServer();
-  await supabase.auth.signOut();
+  await cerrarSesionActual();
   redirect('/entrar');
 }

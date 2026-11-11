@@ -16,7 +16,8 @@ documentación para la entrega y preparación de la demo.
 ## Reglas del proyecto (no negociables)
 
 1. **100 % autónomo.** Ningún camino puede depender de una persona que no existe.
-2. **100 % free tier.** Supabase, Vercel, Groq, Google AI Studio. Nada de pago.
+2. **100 % free tier, sin tarjeta.** PostgreSQL (Docker / Aiven), Render, GitHub (Actions +
+   ghcr.io), minikube, Groq, Google AI Studio. Nada de pago.
 3. **Sin mocks falsos.** Todo código debe ser real y ejecutable. Los dobles de prueba viven
    solo en `tests/`.
 4. **Arquitectura por dominios bajo `lib/`** (ver abajo).
@@ -37,7 +38,9 @@ del que el sistema no salga solo?
 
 - Next.js 16 (App Router, Server Actions, TypeScript estricto)
 - Tailwind CSS, shadcn/ui, Lucide
-- Supabase: PostgreSQL 16 + pgvector, Auth, RLS estricto, Realtime
+- PostgreSQL 16 + pgvector con `pg` (antes Supabase): RLS estricto vía `asUser`, login propio
+  con BCrypt + cookie JWT HS256, sondeo cada 15 s en vez de Realtime
+- Despliegue: Docker + compose (Nivel 1), Aiven + Render (Nivel 2), minikube (Nivel 3)
 - IA: Groq → Google AI Studio (Gemini) con fallback automático; embeddings
   `gemini-embedding-001` a **1536** dimensiones
 - Zod estricto en todas las fronteras
@@ -64,7 +67,13 @@ npm run match -- <task_id> [--assign|--dry-run|--manual]
 npm run deliver -- <task_id> <archivo.json|.md>    # sin args: lista tareas asignadas con sus IDs de criterio
 npm run qa -- <deliverable_id> [--dry-run|--task|--all]
 
-# Agentes (en dev NO hay planificador: los crons de Vercel solo existen en producción)
+# Base de datos
+npm run sql:build        # regenera sql/ desde db/ (sql:check en verify)
+npm run sql:aplicar      # ejecuta sql/ contra la base de DB_* (Aiven)
+npm run cuenta:admin     # ADMIN_EMAIL=… ADMIN_PASSWORD=… crea o asciende un admin
+npm run test:integracion # VEKTORA_TEST_DB=1 + DB_*: pruebas contra PostgreSQL real
+
+# Agentes (en dev NO hay planificador: en producción los dispara GitHub Actions)
 npm run cron             # dispara emparejar y evaluar
 npm run cron emparejar
 npm run cron evaluar
@@ -79,7 +88,7 @@ ruta real es `lib/<dominio>/`.
 
 ```
 lib/
-  env.ts            Carga .env.local para procesos fuera de Next.js (scripts)
+  env.ts            Carga .env / .env.local para procesos fuera de Next.js (scripts)
   ai/               Cliente de IA único, proveedores, embeddings, telemetría (ai_runs)
   planner/          Objetivo → DAG (dag.ts es álgebra de grafos PURA)
   providers/        Alta de proveedores y resolución semántica de skills
@@ -88,10 +97,15 @@ lib/
   cuotas/           Límites de uso
   validacion/       Filtros de contenido PUROS (correo, texto sustantivo, presupuesto)
   cron/             Autorización de los disparadores
-  supabase/         admin.ts · server.ts · browser.ts · types.ts
+  db/               client.ts (query/transaction/asUser) · config.ts (DB_*) · types.ts
+  auth/             password (bcrypt) · token (JWT) · permisos · servicio · session
+  errores/          VektoraError y mensajeParaUsuario() — único camino de un error a la UI
+  consultas/        lecturas de las páginas (asUser), búsqueda y reporte
+  proyectos/ entregas/ admin/   servicios de escritura (CRUD, transacción de entrega)
 app/                Rutas (en español): entrar, (app)/panel, proyectos, tareas, proveedor, trabajo
 app/acciones/       Server Actions: proyectos, proveedor, entregas (únicos puntos de escritura)
-app/api/cron/       emparejar (15 min) y evaluar (10 min), declarados en vercel.json
+app/api/cron/       emparejar y evaluar (los dispara GitHub Actions; en dev, npm run cron)
+app/health/         /health: 200 si app y base responden
 components/         grafo/, ui/, estados.ts (traducción ÚNICA estado → etiqueta + color)
 db/                 schema.sql, migrations/0002–0007, seeds/, verify/
 scripts/            CLIs del ciclo autónomo
@@ -107,20 +121,22 @@ docs/               Documentación evaluable
 3. **Un único cliente de IA**: `getAiClient()` de `@/lib/ai`. Nadie habla con Groq ni con
    Gemini directamente. La capa usa `fetch` sobre `lib/ai/providers/http.ts` a propósito (no
    la SDK de Google): una sola política de timeout, reintentos y telemetría.
-4. **Tres clientes de Supabase, tres privilegios**:
+4. **Una sola puerta a la base, dos identidades** (`@/lib/db`):
 
-   | Cliente | Clave | Dónde | RLS |
-   |---|---|---|---|
-   | `lib/supabase/admin.ts` → `getSupabaseAdmin()` | `service_role` | solo servidor | la salta |
-   | `lib/supabase/server.ts` | `anon` + cookies | servidor | la aplica |
-   | `lib/supabase/browser.ts` | `anon` | navegador | la aplica |
+   | Llamada | Identidad | RLS |
+   |---|---|---|
+   | `getDb().query(sql, [params])` | dueño de las tablas (agentes, login, telemetría) | no aplica |
+   | `getDb().asUser(userId, (tx) => …)` | la persona (`SET LOCAL ROLE authenticated`) | aplica |
+   | `getDb().transaction((tx) => …)` | dueño, con BEGIN/COMMIT/ROLLBACK | no aplica |
 
-   `admin.ts` lanza si existe `window`. Nunca importar `admin` desde un componente cliente.
+   Siempre `$1, $2…` (nunca concatenar valores). `jsonb` se pasa con `json(valor)` y se
+   castea (`$1::jsonb`); funciones SQL con notación nombrada (`p_x => $1`). Las páginas leen
+   SOLO con `lib/consultas` (asUser). `pg` es solo servidor.
 
 ### Patrón de cada dominio
 
 `schemas.ts` (Zod) · `config.ts` (umbrales desde entorno, validados con Zod) ·
-`repository.ts` (interfaz + implementación Supabase) · orquestador · `index.ts` con
+`repository.ts` (interfaz + implementación `Postgres*`) · orquestador · `index.ts` con
 `create<Algo>()`. La **política** (pesos, umbrales, veredictos) vive en TypeScript puro y
 testeable; SQL hace solo lo que solo SQL puede hacer (vecinos vectoriales, atomicidad, RLS).
 
@@ -131,7 +147,9 @@ testeable; SQL hace solo lo que solo SQL puede hacer (vecinos vectoriales, atomi
   ya rompió la base una vez.
 - Orden de despliegue: `db/schema.sql` → `db/migrations/0002` … `0007` → `db/seeds/`.
 - Toda migración es **idempotente** y empieza con `set search_path = public, extensions;`
-  (sin eso `uuid_generate_v4()` no se resuelve en Supabase).
+  (sin eso `uuid_generate_v4()` no se resuelve).
+- `db/00_plataforma.sql` reemplaza a Supabase (esquema `auth`, `auth.users.password_hash`,
+  `auth.uid()`, roles). `sql/` es GENERADO desde `db/`: no editarlo a mano.
 - Toda función nueva: `REVOKE ... FROM PUBLIC` y luego `GRANT` explícito. `REVOKE FROM anon`
   solo no cierra nada.
 - Una política RLS que llama a una función exige EXECUTE para el **rol evaluado**
@@ -139,7 +157,7 @@ testeable; SQL hace solo lo que solo SQL puede hacer (vecinos vectoriales, atomi
 - `reputation_events` es **append-only**: nunca UPDATE ni DELETE; las correcciones se añaden
   como evento contrario.
 - Las RPC multi-paso (`apply_project_plan`, `apply_qa_verdict`, `accept_task_application`…)
-  existen porque supabase-js no tiene transacciones. No partirlas en varias llamadas.
+  son atómicas en el servidor. No partirlas en varias llamadas.
 - Nombres reales que la documentación vieja tenía mal: `task_dependencies.depends_on_task_id`,
   `reputation_events.user_id`, `provider_profiles.hourly_rate_usd`, `deliverables.qa_status`,
   `reviews.source`, `audit_logs.entity_type/entity_id`, `project_dag(uuid)` es **función**.
@@ -149,7 +167,7 @@ testeable; SQL hace solo lo que solo SQL puede hacer (vecinos vectoriales, atomi
 
 ## Variables de entorno relevantes
 
-Ver `.env.local` / `lib/*/config.ts` para la lista completa. Las que tienen historia:
+Ver `.env.example` / `lib/*/config.ts` para la lista completa. Las que tienen historia:
 
 | Variable | Valor | Por qué |
 |---|---|---|
@@ -187,8 +205,9 @@ Los umbrales son **medidos, no puestos a ojo**. No cambiarlos sin volver a medir
 ### Trampas de Next 16
 
 - `await cookies()` **antes** de leer el entorno, o Next intenta prerenderizar y falla el build.
-- `middleware.ts` ahora es `proxy.ts` con `export default async function proxy(...)`.
-- Los crons de `vercel.json` solo corren en producción.
+- `typedRoutes` está activo: un `redirect` a una ruta armada con texto necesita `as Route`.
+- `next build` compila en modo `standalone` (lo usa el Dockerfile) y puede tocar
+  `next-env.d.ts`: si aparece modificado, `git checkout next-env.d.ts`.
 
 ## Antes de dar un cambio por terminado
 
@@ -205,7 +224,7 @@ Los umbrales son **medidos, no puestos a ojo**. No cambiarlos sin volver a medir
 - Commits solo cuando se pidan. Después de cada commit, **verificar leyendo de vuelta** con
   `git show` / `git diff` que el contenido es el esperado: ya hubo commits que «reportaron
   éxito» con contenido obsoleto.
-- Nunca commitear `.env.local` ni claves.
+- Nunca commitear `.env` ni claves (ni el CA de Aiven, ni `k8s/secret.yaml`).
 
 ## Contexto de entrega
 
@@ -216,14 +235,12 @@ Los umbrales son **medidos, no puestos a ojo**. No cambiarlos sin volver a medir
 - Documentación evaluable en `docs/` (`07-repositorio-y-auditoria.md`, `09-despliegue.md`).
   **Borrar `docs/08-estado-de-implementacion.md` antes de entregar** (nota interna).
 
-### Pendiente del lado humano (no lo puede hacer Claude)
+### Examen de despliegue
 
-- Aplicar `0006_realtime.sql` y `0007_escalada.sql` en el SQL Editor de Supabase (si no se hizo).
-- `CRON_SECRET` en `.env.local` y en Vercel.
-- Desplegar en Vercel siguiendo `docs/09-despliegue.md`.
-- Reactivar «Confirm email» en Supabase antes de entregar.
-- Tener una **segunda cuenta** para el rol de proveedor (el dueño no puede ser proveedor de sus
-  propias tareas).
+El plan por fases (Docker → Aiven/Render → minikube → seguridad → documentación) y su
+estado están en `docs/guia-despliegue.md`. Datos de prueba: contraseña pública
+`Demo-Vektora-2026` (ver `db/seeds/02_datos_demo.sql`); el admin se crea con
+`npm run cuenta:admin` en cada base.
 
 ## Documentación de diseño
 

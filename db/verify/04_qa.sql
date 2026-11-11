@@ -1,7 +1,7 @@
 -- =====================================================================================
 -- VEKTORA · FASE 5 — Verificación de comportamiento del AI Judge
 -- =====================================================================================
--- Sobre base LOCAL desechable. Requiere 00_harness + schema + 0002 + 0003 + seeds + 0004
+-- Sobre base LOCAL desechable. Requiere db/00_plataforma.sql + schema + 0002 + 0003 + seeds + 0004
 -- + 0005. Lo que se prueba aquí no es que el SQL aplique, sino que el juez no pueda
 -- cobrar dos veces, revocar trabajo ya aprobado, ni castigar a nadie por un fallo de IA.
 -- =====================================================================================

@@ -91,8 +91,12 @@ export const AiEnvSchema = z
     AI_EMBED_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
 
     // --- Telemetría (tabla ai_runs) ---
-    SUPABASE_URL: z.string().url().optional(),
-    SUPABASE_SERVICE_ROLE_KEY: z.string().trim().min(1).optional(),
+    // Se escribe con la misma conexión que el resto de la app (`lib/db`). Basta con saber
+    // si están los datos mínimos; la validación completa la hace `lib/db/config.ts`.
+    DB_HOST: z.string().trim().min(1).optional(),
+    DB_NAME: z.string().trim().min(1).optional(),
+    DB_USER: z.string().trim().min(1).optional(),
+    DB_PASSWORD: z.string().min(1).optional(),
     AI_LOG_PAYLOADS: booleanish.default(true),
     AI_LOG_PAYLOAD_MAX_CHARS: z.coerce.number().int().min(0).max(200_000).default(8_000),
   })
@@ -171,7 +175,7 @@ export function resetAiConfigCache(): void {
 }
 
 export function isTelemetryConfigured(config: AiConfig): boolean {
-  return Boolean(config.SUPABASE_URL && config.SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(config.DB_HOST && config.DB_NAME && config.DB_USER && config.DB_PASSWORD);
 }
 
 /**
@@ -196,7 +200,7 @@ export function aiConfigWarnings(config: AiConfig): string[] {
     );
   }
   if (!isTelemetryConfigured(config)) {
-    warnings.push('Sin SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY: no se escribirá en ai_runs.');
+    warnings.push('Sin DB_HOST/DB_NAME/DB_USER/DB_PASSWORD: no se escribirá en ai_runs.');
   }
   return warnings;
 }

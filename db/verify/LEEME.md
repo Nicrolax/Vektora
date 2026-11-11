@@ -6,39 +6,31 @@ apariencia y fallaban al ejecutarse: `42703` por una columna inexistente y `4260
 variable `%rowtype` dentro de un `INTO` con varios destinos. Ninguno de los dos lo habría
 atrapado una revisión visual.
 
-**Se ejecuta contra una base local desechable, nunca contra Supabase**: crea usuarios,
+**Se ejecuta contra una base local desechable, nunca contra Aiven ni la de la demo**: crea usuarios,
 proyectos y skills de prueba.
 
 ## Cómo correrlo
 
-Necesitás PostgreSQL 16 y pgvector. En Debian/Ubuntu:
+Lo corre solo el workflow **CI** (`.github/workflows/ci.yml`, job `base`) en cada push, sobre
+un servicio `pgvector/pgvector:pg16` vacío. Para hacerlo a mano, con Docker:
 
 ```bash
-sudo apt-get install -y postgresql postgresql-16-pgvector
-export PGDATA=/tmp/pgdata
-/usr/lib/postgresql/16/bin/initdb -D "$PGDATA" -U postgres --auth=trust
-/usr/lib/postgresql/16/bin/pg_ctl -D "$PGDATA" -o '-p 5433 -k /tmp' -l /tmp/pg.log start
-
-P="psql -h /tmp -p 5433 -U postgres -d postgres -v ON_ERROR_STOP=1"
-$P -f db/verify/00_harness.sql
-$P -f db/schema.sql
-$P -f db/migrations/0002_planner.sql
-$P -f db/migrations/0003_provider_onboarding.sql
-$P -f db/migrations/0004_matching.sql
-$P -f db/migrations/0005_qa.sql
-$P -f db/seeds/01_skills.sql
-$P -f db/verify/01_comportamiento.sql
-$P -f db/verify/02_rls.sql
-$P -f db/verify/03_matching.sql
+docker run -d --name vk-verify -e POSTGRES_PASSWORD=verify -p 5433:5432 pgvector/pgvector:pg16
+P="docker exec -i vk-verify psql -U postgres -d postgres -v ON_ERROR_STOP=1"
+for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql          db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql          db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/seeds/01_skills.sql          db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql          db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql; do
+  $P < "$f" || break
+done
+docker rm -f vk-verify
 ```
 
-En Windows conviene hacerlo dentro de WSL o de un contenedor `postgres:16`.
+Va SIN `db/seeds/02_datos_demo.sql`: las comprobaciones de RLS cuentan filas («un tercero ve 0
+proyectos») y el proyecto público de la demo las alteraría.
 
 ## Qué contiene cada archivo
 
 | Archivo | Qué hace |
 |---|---|
-| `00_harness.sql` | Reproduce lo que Supabase da por hecho: esquema `auth`, `auth.users`, `auth.uid()` y los roles `anon` / `authenticated` / `service_role` (este último con `bypassrls`) |
+| `../00_plataforma.sql` | (reemplazó al viejo `00_harness.sql`) Esquema `auth`, `auth.users` con `password_hash`, `auth.uid()` y los roles `anon` / `authenticated` / `service_role` |
 | `01_comportamiento.sql` | Bootstrap de cuentas, `apply_project_plan`, rechazo de ciclos, `refresh_task_readiness`, la cascada de `resolve_or_create_skill`, alta de proveedor y privilegios de `anon` |
 | `02_rls.sql` | Aislamiento por RLS, con transacciones explícitas |
 | `03_matching.sql` | Filtros duros de candidatos, shortlist idempotente, adjudicación atómica y sus carreras |

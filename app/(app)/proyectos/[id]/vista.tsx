@@ -7,15 +7,19 @@ import { Grafo } from '@/components/grafo/Grafo';
 import { contarPorEstado, type TareaGrafo } from '@/components/grafo/disposicion';
 import { Insignia } from '@/components/ui/primitivas';
 import { ORDEN_TAREA, presentarTarea } from '@/components/estados';
-import { getSupabaseBrowser } from '@/lib/supabase/browser';
+
+/** Cada cuánto se pregunta si algo cambió. 15 s: suficiente para ver avanzar el ciclo. */
+const INTERVALO_MS = 15_000;
 
 /**
- * Grafo más panel lateral, con actualización en vivo (RF-8.5).
+ * Grafo más panel lateral, con actualización automática.
  *
- * La suscripción no trae los datos nuevos: pide a Next que vuelva a renderizar la página en
- * el servidor. Así los datos siguen pasando por las políticas de acceso una sola vez, en el
- * servidor, y el navegador nunca recibe más de lo que puede ver. Traerlos por el canal en
- * vivo obligaría a replicar esa autorización en el cliente.
+ * Antes se usaba Realtime de Supabase; con PostgreSQL común se SONDEA: cada 15 s, y solo
+ * con la pestaña visible, se pide a `/api/proyectos/<id>/firma` un resumen del estado de
+ * las tareas. Si cambió, se le pide a Next que vuelva a renderizar la página en el
+ * servidor. Así los datos siguen pasando por RLS una sola vez, en el servidor, y el
+ * navegador nunca recibe más de lo que puede ver. Con la pestaña oculta no se consulta
+ * nada: no se gastan conexiones de la base por una pestaña que nadie mira.
  */
 export function VistaProyecto({
   projectId,
@@ -29,23 +33,36 @@ export function VistaProyecto({
   const [vivo, setVivo] = useState(false);
 
   useEffect(() => {
-    const supabase = getSupabaseBrowser();
-    const canal = supabase
-      .channel(`proyecto:${projectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'project_tasks',
-          filter: `project_id=eq.${projectId}`,
-        },
-        () => router.refresh(),
-      )
-      .subscribe((estado) => setVivo(estado === 'SUBSCRIBED'));
+    let firma: string | null = null;
+    let cancelado = false;
 
+    async function consultar() {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const respuesta = await fetch(`/api/proyectos/${projectId}/firma`, { cache: 'no-store' });
+        if (!respuesta.ok) {
+          if (!cancelado) setVivo(false);
+          return;
+        }
+        const { firma: nueva } = (await respuesta.json()) as { firma: string };
+        if (cancelado) return;
+        setVivo(true);
+        if (firma !== null && nueva !== firma) router.refresh();
+        firma = nueva;
+      } catch {
+        if (!cancelado) setVivo(false);
+      }
+    }
+
+    void consultar();
+    const temporizador = setInterval(() => void consultar(), INTERVALO_MS);
+    // Al volver a la pestaña se consulta enseguida, sin esperar al próximo intervalo.
+    const alCambiarVisibilidad = () => void consultar();
+    document.addEventListener('visibilitychange', alCambiarVisibilidad);
     return () => {
-      void supabase.removeChannel(canal);
+      cancelado = true;
+      clearInterval(temporizador);
+      document.removeEventListener('visibilitychange', alCambiarVisibilidad);
     };
   }, [projectId, router]);
 
@@ -79,8 +96,8 @@ export function VistaProyecto({
           className="ml-auto flex items-center gap-1.5 text-xs text-[var(--color-apagado)]"
           title={
             vivo
-              ? 'Conectado: los cambios de estado aparecen sin recargar.'
-              : 'Sin conexión en vivo: recargá para ver los cambios.'
+              ? 'Se revisa cada 15 segundos: los cambios de estado aparecen sin recargar.'
+              : 'Sin actualización automática: recargá para ver los cambios.'
           }
         >
           <span
@@ -90,7 +107,7 @@ export function VistaProyecto({
               backgroundColor: vivo ? 'var(--color-aprobada)' : 'var(--color-apagado)',
             }}
           />
-          {vivo ? 'en vivo' : 'sin conexión en vivo'}
+          {vivo ? 'actualización automática' : 'sin actualización automática'}
         </span>
       </div>
 

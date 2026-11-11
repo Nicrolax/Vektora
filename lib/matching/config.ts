@@ -6,6 +6,7 @@
  * adjudicaciones en silencio, y en un sistema sin humanos nadie lo notaría.
  */
 
+import { ConfiguracionError } from '@/lib/errores';
 import { z } from 'zod';
 
 export const MatchingConfigSchema = z
@@ -156,10 +157,9 @@ export interface MatchingConfig {
   escalateAfterRounds: number;
 }
 
-export class MatchingConfigError extends Error {
+export class MatchingConfigError extends ConfiguracionError {
   constructor(message: string) {
     super(`VEKTORA/MATCH: ${message}`);
-    this.name = 'MatchingConfigError';
   }
 }
 

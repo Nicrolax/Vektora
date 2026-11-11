@@ -82,7 +82,7 @@ export {
   buildTelemetrySink,
   InMemoryTelemetrySink,
   NullTelemetrySink,
-  SupabaseTelemetrySink,
+  PostgresTelemetrySink,
 } from './telemetry';
 export type { RunFinish, RunStart, TelemetrySink } from './telemetry';
 

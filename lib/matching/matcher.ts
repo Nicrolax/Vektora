@@ -17,6 +17,7 @@
  * bloquearía el DAG entero.
  */
 
+import { DominioError } from '@/lib/errores';
 import { getEmbeddingService, toPgVector, type EmbeddingService } from '@/lib/ai/embeddings';
 import { errorMessage, isAiError } from '@/lib/ai/errors';
 import { getMatchingConfig, type MatchingConfig } from './config';
@@ -33,10 +34,9 @@ import {
   type ScoredCandidate,
 } from './scoring';
 
-export class MatchingError extends Error {
+export class MatchingError extends DominioError {
   constructor(message: string, cause?: unknown) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = 'MatchingError';
   }
 }
 

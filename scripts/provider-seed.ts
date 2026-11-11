@@ -8,7 +8,7 @@
  * dueño de un proyecto no puede ser proveedor de sus propias tareas —regla de negocio
  * correcta— así que hacen falta OTRAS personas para que el ranking tenga algo que ordenar.
  *
- * No inserta filas a mano: crea cuentas reales en Supabase Auth (el trigger del bootstrap
+ * No inserta perfiles a mano: crea cuentas reales en `auth.users` (el trigger del bootstrap
  * las proyecta a `public.users` y `profiles`) y las da de alta con el mismo
  * `ProviderOnboarding` que usará el formulario de la FASE 6. Si este script funciona, el
  * camino real funciona.
@@ -20,11 +20,10 @@
 
 import '@/lib/env';
 
-import { randomUUID } from 'node:crypto';
 import { errorMessage } from '@/lib/ai/errors';
 import { createProviderOnboarding, describeResolution } from '@/lib/providers';
 import type { RegisterProviderInput } from '@/lib/providers';
-import { getSupabaseAdmin, resolveAdminCredentials } from '@/lib/supabase/admin';
+import { cerrarDb, getDb, json } from '@/lib/db';
 
 const SEED_PREFIX = 'vektora.seed.';
 
@@ -157,63 +156,40 @@ const SEEDS: SeedProvider[] = [
 
 const seedEmail = (slug: string): string => `${SEED_PREFIX}${slug}@vektora.example`;
 
-interface AdminUser {
-  id: string;
-  email?: string;
-}
-
-async function createAuthUser(fullName: string, email: string): Promise<AdminUser> {
-  const { url, serviceRoleKey } = resolveAdminCredentials();
-  const response = await fetch(`${url.replace(/\/+$/, '')}/auth/v1/admin/users`, {
-    method: 'POST',
-    headers: {
-      apikey: serviceRoleKey,
-      authorization: `Bearer ${serviceRoleKey}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      email,
-      // Contraseña aleatoria que no se imprime: estas cuentas no están pensadas para
-      // iniciar sesión, solo para existir como proveedores.
-      password: randomUUID(),
-      email_confirm: true,
-      user_metadata: { full_name: fullName, role: 'provider' },
-    }),
-  });
-
-  const body = (await response.json()) as AdminUser & { msg?: string; message?: string };
-  if (!response.ok) {
-    throw new Error(`${response.status} ${body.msg ?? body.message ?? 'error desconocido'}`);
-  }
-  return body;
+/**
+ * Cuenta en `auth.users` SIN contraseña (`password_hash` nulo): estas cuentas existen como
+ * proveedores para que el ranking tenga a quién ordenar, pero nadie puede iniciar sesión
+ * con ellas.
+ */
+async function createAuthUser(fullName: string, email: string): Promise<string> {
+  const fila = await getDb().one<{ id: string }>(
+    `insert into auth.users (email, password_hash, raw_user_meta_data)
+     values (lower($1), null, $2::jsonb)
+     returning id`,
+    [email, json({ full_name: fullName, role: 'provider' })],
+  );
+  if (fila === null) throw new Error('el insert en auth.users no devolvió id');
+  return fila.id;
 }
 
 async function deleteAuthUser(id: string): Promise<void> {
-  const { url, serviceRoleKey } = resolveAdminCredentials();
-  const response = await fetch(`${url.replace(/\/+$/, '')}/auth/v1/admin/users/${id}`, {
-    method: 'DELETE',
-    headers: { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}` },
-  });
-  if (!response.ok && response.status !== 404) {
-    throw new Error(`${response.status} ${(await response.text()).slice(0, 160)}`);
-  }
+  await getDb().execute('delete from auth.users where id = $1', [id]);
 }
 
 async function purge(): Promise<void> {
   console.log('\n=== VEKTORA · borrando proveedores de prueba ===\n');
-  const client = getSupabaseAdmin();
-
-  const { data, error } = await client
-    .from('users')
-    .select('id, email')
-    .like('email', `${SEED_PREFIX}%`);
-  if (error !== null) {
-    console.error(`No se pudieron listar -> ${error.message}\n`);
+  let users: Array<{ id: string; email: string | null }>;
+  try {
+    users = await getDb().query(
+      `select id, email::text as email from public.users where email like $1`,
+      [`${SEED_PREFIX}%`],
+    );
+  } catch (error) {
+    console.error(`No se pudieron listar -> ${errorMessage(error)}\n`);
     process.exitCode = 1;
     return;
   }
 
-  const users = (data ?? []) as Array<{ id: string; email: string | null }>;
   if (users.length === 0) {
     console.log('No hay cuentas de prueba que borrar.\n');
     return;
@@ -235,9 +211,9 @@ async function purge(): Promise<void> {
 
 async function seed(): Promise<void> {
   console.log('\n=== VEKTORA · proveedores de prueba ===\n');
-  console.log('Se crean por el camino real: cuenta en Supabase Auth + ProviderOnboarding.\n');
+  console.log('Se crean por el camino real: cuenta en auth.users + ProviderOnboarding.\n');
 
-  const client = getSupabaseAdmin();
+  const db = getDb();
   const onboarding = createProviderOnboarding();
   let created = 0;
 
@@ -246,16 +222,15 @@ async function seed(): Promise<void> {
     console.log(`\n── ${entry.fullName}  <${email}>`);
 
     let userId: string;
-    const existing = await client.from('users').select('id').eq('email', email).maybeSingle();
+    const existing = await db.one<{ id: string }>('select id from public.users where email = $1', [email]);
 
-    if (existing.data !== null) {
-      userId = String((existing.data as { id: unknown }).id);
+    if (existing !== null) {
+      userId = existing.id;
       console.log('   cuenta ya existente: se actualiza el perfil');
     } else {
       try {
-        const authUser = await createAuthUser(entry.fullName, email);
-        userId = authUser.id;
-        console.log('   cuenta creada en Supabase Auth');
+        userId = await createAuthUser(entry.fullName, email);
+        console.log('   cuenta creada en auth.users');
       } catch (error) {
         console.log(`   ✗ no se pudo crear la cuenta -> ${errorMessage(error)}`);
         continue;
@@ -276,17 +251,22 @@ async function seed(): Promise<void> {
       // trigger `apply_reputation_event` proyecta el total en provider_profiles, igual
       // que ocurrirá en producción.
       if (entry.reputation.length > 0) {
-        const rows = entry.reputation.map((event) => ({
-          user_id: userId,
-          event_type: event.type,
-          delta: event.delta,
-          reason: event.reason,
-          actor_type: 'system',
-        }));
-        const inserted = await client.from('reputation_events').insert(rows);
-        if (inserted.error !== null) {
-          console.log(`   aviso: reputación no sembrada -> ${inserted.error.message}`);
-        } else {
+        let sembrada = true;
+        try {
+          await db.transaction(async (tx) => {
+            for (const event of entry.reputation) {
+              await tx.execute(
+                `insert into public.reputation_events (user_id, event_type, delta, reason, actor_type)
+                 values ($1, $2::public.reputation_event_type, $3, $4, 'system')`,
+                [userId, event.type, event.delta, event.reason],
+              );
+            }
+          });
+        } catch (error) {
+          sembrada = false;
+          console.log(`   aviso: reputación no sembrada -> ${errorMessage(error)}`);
+        }
+        if (sembrada) {
           const total = entry.reputation.reduce((sum, event) => sum + event.delta, 0);
           console.log(`   reputación sembrada: ${entry.reputation.length} eventos (+${total})`);
         }
@@ -314,7 +294,9 @@ async function main(): Promise<void> {
   await seed();
 }
 
-main().catch((error: unknown) => {
+main()
+  .finally(() => cerrarDb())
+  .catch((error: unknown) => {
   console.error(`\nVEKTORA/PROVIDER: falló -> ${errorMessage(error)}\n`);
   process.exitCode = 1;
 });

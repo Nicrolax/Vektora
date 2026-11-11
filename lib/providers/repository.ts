@@ -2,12 +2,13 @@
  * VEKTORA · FASE 3.5 — Acceso a datos del onboarding de proveedores.
  *
  * Mismo patrón que `lib/planner/repository.ts`: el dominio habla con esta interfaz y nunca
- * con Supabase directamente, así la lógica (resolución de skills, orquestación del alta) se
+ * con la base directamente, así la lógica (resolución de skills, orquestación del alta) se
  * prueba sin base de datos y la persistencia queda en un único sitio auditable.
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { ActorType } from '@/lib/supabase/types';
+import { json, type Consultor } from '@/lib/db';
+import type { ActorType } from '@/lib/db/types';
+import { DatabaseError } from '@/lib/errores';
 
 export interface UserRecord {
   id: string;
@@ -94,82 +95,102 @@ export interface ProviderRepository {
   saveProviderEmbedding(providerProfileId: string, vector: string, model: string): Promise<boolean>;
 }
 
-export class ProviderRepositoryError extends Error {
-  readonly code: string | undefined;
-  readonly details: unknown;
+/**
+ * Fallo de persistencia del alta de proveedores. Hereda de `DatabaseError`: conserva el
+ * SQLSTATE y nunca muestra el texto de la base a la persona.
+ */
+export class ProviderRepositoryError extends DatabaseError {
+  override readonly codigo: string = 'proveedor_repositorio';
+}
 
-  constructor(message: string, code?: string, details?: unknown) {
-    super(message);
-    this.name = 'ProviderRepositoryError';
-    this.code = code;
-    this.details = details;
+function fail(action: string, error: unknown): never {
+  if (error instanceof DatabaseError) {
+    throw new ProviderRepositoryError(
+      `VEKTORA/PROVIDER: ${action} falló -> ${error.message}`,
+      error.sqlstate,
+      error.details,
+      { cause: error },
+    );
   }
+  throw error;
 }
 
-interface PostgrestErrorLike {
-  message: string;
-  code?: string;
-  details?: unknown;
-  hint?: unknown;
-}
+/**
+ * Columnas de `profiles` que se pueden escribir. Es una lista blanca: el nombre de columna
+ * sí va en el texto del SQL, así que NUNCA puede venir de un dato externo.
+ */
+const COLUMNAS_PERFIL = [
+  'full_name',
+  'display_name',
+  'country_code',
+  'timezone',
+  'locale',
+  'bio',
+  'website_url',
+] as const satisfies readonly (keyof PersonProfilePayload)[];
 
-function fail(action: string, error: PostgrestErrorLike): never {
-  throw new ProviderRepositoryError(
-    `VEKTORA/PROVIDER: ${action} falló -> ${error.message}`,
-    error.code,
-    error.details ?? error.hint,
-  );
-}
-
-export class SupabaseProviderRepository implements ProviderRepository {
-  constructor(private readonly client: SupabaseClient) {}
+/** Implementación sobre PostgreSQL. Todas las consultas son parametrizadas (R9). */
+export class PostgresProviderRepository implements ProviderRepository {
+  constructor(private readonly db: Consultor) {}
 
   async findUserById(userId: string): Promise<UserRecord | null> {
-    const { data, error } = await this.client
-      .from('users')
-      .select('id, email, status')
-      .eq('id', userId)
-      .maybeSingle();
-    if (error !== null) fail('buscar el usuario', error);
-    return data === null ? null : (data as UserRecord);
+    try {
+      return await this.db.one<UserRecord>(
+        'select id, email::text as email, status from public.users where id = $1',
+        [userId],
+      );
+    } catch (error) {
+      fail('buscar el usuario', error);
+    }
   }
 
   async findUserByEmail(email: string): Promise<UserRecord | null> {
     // `users.email` es citext: la comparación ya es insensible a mayúsculas en la base.
-    const { data, error } = await this.client
-      .from('users')
-      .select('id, email, status')
-      .eq('email', email)
-      .maybeSingle();
-    if (error !== null) fail('buscar el usuario por correo', error);
-    return data === null ? null : (data as UserRecord);
+    try {
+      return await this.db.one<UserRecord>(
+        'select id, email::text as email, status from public.users where email = $1',
+        [email],
+      );
+    } catch (error) {
+      fail('buscar el usuario por correo', error);
+    }
   }
 
   async findSkillsBySlugs(slugs: readonly string[]): Promise<SkillRecord[]> {
     if (slugs.length === 0) return [];
-    const { data, error } = await this.client
-      .from('skills')
-      .select('id, slug, name, category')
-      .in('slug', [...slugs]);
-    if (error !== null) fail('leer el catálogo de skills', error);
-    return (data ?? []) as SkillRecord[];
+    try {
+      return await this.db.query<SkillRecord>(
+        'select id, slug, name, category from public.skills where slug = any($1::text[])',
+        [slugs],
+      );
+    } catch (error) {
+      fail('leer el catálogo de skills', error);
+    }
   }
 
   async findSkillsByAliases(aliases: readonly string[]): Promise<Map<string, SkillRecord>> {
     const out = new Map<string, SkillRecord>();
     if (aliases.length === 0) return out;
 
-    const { data, error } = await this.client
-      .from('skill_aliases')
-      .select('alias, skills:skill_id (id, slug, name, category)')
-      .in('alias', [...aliases]);
-    if (error !== null) fail('leer los alias de skills', error);
-
-    for (const row of (data ?? []) as Array<{ alias: string; skills: unknown }>) {
-      // PostgREST devuelve la relación como objeto o como array de uno según la cardinalidad.
-      const joined = Array.isArray(row.skills) ? row.skills[0] : row.skills;
-      if (joined === undefined || joined === null) continue;
-      out.set(row.alias.toLowerCase(), joined as SkillRecord);
+    let filas: Array<SkillRecord & { alias: string }>;
+    try {
+      filas = await this.db.query<SkillRecord & { alias: string }>(
+        `select a.alias, s.id, s.slug, s.name, s.category
+           from public.skill_aliases a
+           join public.skills s on s.id = a.skill_id
+          where a.alias = any($1::text[])`,
+        [aliases],
+      );
+    } catch (error) {
+      fail('leer los alias de skills', error);
+    }
+    for (const fila of filas) {
+      out.set(fila.alias.toLowerCase(), {
+        id: fila.id,
+        slug: fila.slug,
+        name: fila.name,
+        category: fila.category,
+      });
     }
     return out;
   }
@@ -180,22 +201,24 @@ export class SupabaseProviderRepository implements ProviderRepository {
     vector?: string | undefined;
     threshold: number;
   }): Promise<Omit<ResolvedSkill, 'proposed'>> {
-    const { data, error } = await this.client.rpc('resolve_or_create_skill', {
-      p_slug: params.slug,
-      p_name: params.name ?? null,
-      p_embedding: params.vector ?? null,
-      p_threshold: params.threshold,
-    });
-    if (error !== null) fail(`resolver la skill "${params.slug}"`, error);
-
-    const payload = (data ?? {}) as {
+    let payload: {
       skill_id?: string;
       slug?: string;
       name?: string;
       category?: string | null;
       match?: SkillMatchKind;
       similarity?: number | string | null;
-    };
+    } = {};
+    try {
+      const fila = await this.db.one<{ r: typeof payload | null }>(
+        `select public.resolve_or_create_skill(
+                  p_slug => $1, p_name => $2, p_embedding => $3, p_threshold => $4::numeric) as r`,
+        [params.slug, params.name ?? null, params.vector ?? null, params.threshold],
+      );
+      payload = fila?.r ?? {};
+    } catch (error) {
+      fail(`resolver la skill "${params.slug}"`, error);
+    }
     if (typeof payload.skill_id !== 'string') {
       throw new ProviderRepositoryError(
         `VEKTORA/PROVIDER: resolve_or_create_skill no devolvió skill_id para "${params.slug}"`,
@@ -217,18 +240,29 @@ export class SupabaseProviderRepository implements ProviderRepository {
   }
 
   async upsertPersonProfile(userId: string, payload: PersonProfilePayload): Promise<void> {
-    const row: Record<string, unknown> = { user_id: userId };
-    for (const [key, value] of Object.entries(payload)) {
-      if (value !== undefined) row[key] = value;
+    const columnas: string[] = [];
+    const valores: (string | null)[] = [userId];
+    for (const columna of COLUMNAS_PERFIL) {
+      const valor = payload[columna];
+      if (valor === undefined) continue;
+      columnas.push(columna);
+      valores.push(valor);
     }
-    // Solo `user_id` significa que no hay nada que actualizar: el trigger de `auth.users`
-    // ya creó la fila en el bootstrap.
-    if (Object.keys(row).length === 1) return;
+    // Sin columnas no hay nada que actualizar: el trigger de `auth.users` ya creó la fila.
+    if (columnas.length === 0) return;
 
-    const { error } = await this.client
-      .from('profiles')
-      .upsert(row, { onConflict: 'user_id' });
-    if (error !== null) fail('guardar el perfil personal', error);
+    const marcadores = columnas.map((_, indice) => `$${indice + 2}`).join(', ');
+    const asignaciones = columnas.map((columna) => `${columna} = excluded.${columna}`).join(', ');
+    try {
+      await this.db.execute(
+        `insert into public.profiles (user_id, ${columnas.join(', ')})
+         values ($1, ${marcadores})
+         on conflict (user_id) do update set ${asignaciones}`,
+        valores,
+      );
+    } catch (error) {
+      fail('guardar el perfil personal', error);
+    }
   }
 
   async upsertProviderProfile(userId: string, payload: ProviderProfilePayload): Promise<string> {
@@ -236,34 +270,47 @@ export class SupabaseProviderRepository implements ProviderRepository {
     for (const [key, value] of Object.entries(payload)) {
       if (value !== undefined) clean[key] = value;
     }
-
-    const { data, error } = await this.client.rpc('upsert_provider_profile', {
-      p_user_id: userId,
-      p_payload: clean,
-    });
-    if (error !== null) fail('guardar el perfil de proveedor', error);
-    if (typeof data !== 'string') {
+    let id: unknown;
+    try {
+      const fila = await this.db.one<{ r: unknown }>(
+        'select public.upsert_provider_profile(p_user_id => $1::uuid, p_payload => $2::jsonb) as r',
+        [userId, json(clean)],
+      );
+      id = fila?.r;
+    } catch (error) {
+      fail('guardar el perfil de proveedor', error);
+    }
+    if (typeof id !== 'string') {
       throw new ProviderRepositoryError(
         'VEKTORA/PROVIDER: upsert_provider_profile no devolvió el id del perfil',
       );
     }
-    return data;
+    return id;
   }
 
   async setProviderSkills(
     providerProfileId: string,
     links: readonly ProviderSkillLink[],
   ): Promise<number> {
-    const { data, error } = await this.client.rpc('set_provider_skills', {
-      p_provider_profile_id: providerProfileId,
-      p_skills: links.map((link) => ({
-        skill_id: link.skill_id,
-        level: link.level,
-        years_experience: link.years_experience ?? null,
-      })),
-    });
-    if (error !== null) fail('vincular las skills del proveedor', error);
-    return typeof data === 'number' ? data : links.length;
+    try {
+      const fila = await this.db.one<{ r: number | null }>(
+        `select public.set_provider_skills(
+                  p_provider_profile_id => $1::uuid, p_skills => $2::jsonb) as r`,
+        [
+          providerProfileId,
+          json(
+            links.map((link) => ({
+              skill_id: link.skill_id,
+              level: link.level,
+              years_experience: link.years_experience ?? null,
+            })),
+          ),
+        ],
+      );
+      return typeof fila?.r === 'number' ? fila.r : links.length;
+    } catch (error) {
+      fail('vincular las skills del proveedor', error);
+    }
   }
 
   async saveProviderEmbedding(
@@ -271,21 +318,21 @@ export class SupabaseProviderRepository implements ProviderRepository {
     vector: string,
     model: string,
   ): Promise<boolean> {
-    const { error } = await this.client
-      .from('provider_profiles')
-      .update({
-        embedding: vector,
-        embedding_model: model,
-        embedding_updated_at: new Date().toISOString(),
-      })
-      .eq('id', providerProfileId);
-
-    // Un embedding que no se guarda degrada el matching de la FASE 4, pero no invalida el
-    // alta: el proveedor existe y el ranking determinista sigue funcionando.
-    if (error !== null) {
-      console.warn(`[vektora/provider] embedding del perfil: ${error.message}`);
+    try {
+      await this.db.execute(
+        `update public.provider_profiles
+            set embedding = $2::extensions.vector, embedding_model = $3,
+                embedding_updated_at = now()
+          where id = $1`,
+        [providerProfileId, vector, model],
+      );
+      return true;
+    } catch (error) {
+      // Un embedding que no se guarda degrada el matching de la FASE 4, pero no invalida el
+      // alta: el proveedor existe y el ranking determinista sigue funcionando.
+      const motivo = error instanceof Error ? error.message : String(error);
+      console.warn(`[vektora/provider] embedding del perfil: ${motivo}`);
       return false;
     }
-    return true;
   }
 }

@@ -17,7 +17,7 @@ import { getEmbeddingService } from '@/lib/ai/embeddings';
 import { toPgVector } from '@/lib/ai/embeddings';
 import { errorMessage } from '@/lib/ai/errors';
 import { renderSkillForEmbedding } from '@/lib/providers/skills';
-import { getSupabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase/admin';
+import { cerrarDb, dbConfigurada, getDb } from '@/lib/db';
 
 interface SkillRow {
   id: string;
@@ -31,13 +31,13 @@ async function main(): Promise<void> {
 
   console.log('\n=== VEKTORA · vectorización del catálogo de skills ===\n');
 
-  if (!isSupabaseAdminConfigured()) {
-    console.error('Faltan SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY en .env.local.\n');
+  if (!dbConfigurada()) {
+    console.error('\nFaltan DB_HOST, DB_NAME, DB_USER y/o DB_PASSWORD en .env (ver .env.example).\n');
     process.exitCode = 1;
     return;
   }
 
-  const client = getSupabaseAdmin();
+  const db = getDb();
   const embeddings = getEmbeddingService();
 
   if (!embeddings.isAvailable()) {
@@ -49,17 +49,13 @@ async function main(): Promise<void> {
   }
   console.log(`Modelo: ${embeddings.describeModel()}`);
 
-  let query = client.from('skills').select('id, slug, name, category').eq('is_active', true);
-  if (!recalculateAll) query = query.is('embedding', null);
-
-  const { data, error } = await query.order('slug', { ascending: true });
-  if (error !== null) {
-    console.error(`No se pudo leer el catálogo -> ${error.message}\n`);
-    process.exitCode = 1;
-    return;
-  }
-
-  const rows = (data ?? []) as SkillRow[];
+  const rows = await db.query<SkillRow>(
+    `select id, slug::text as slug, name, category
+       from public.skills
+      where is_active and ($1::boolean or embedding is null)
+      order by slug`,
+    [recalculateAll],
+  );
   if (rows.length === 0) {
     console.log('\nNo hay skills pendientes de vectorizar. Nada que hacer.\n');
     return;
@@ -98,21 +94,18 @@ async function main(): Promise<void> {
       const vector = vectors[index];
       if (row === undefined || vector === undefined) continue;
 
-      const update = await client
-        .from('skills')
-        .update({
-          embedding: toPgVector(vector, dimensions),
-          embedding_model: model,
-          embedding_updated_at: new Date().toISOString(),
-        })
-        .eq('id', row.id);
-
-      if (update.error !== null) {
-        failed += 1;
-        console.error(`  ✗ ${row.slug}: ${update.error.message}`);
-      } else {
+      try {
+        await db.execute(
+          `update public.skills
+              set embedding = $2::extensions.vector, embedding_model = $3, embedding_updated_at = now()
+            where id = $1`,
+          [row.id, toPgVector(vector, dimensions), model],
+        );
         saved += 1;
         console.log(`  ✓ ${row.slug.padEnd(22)} ${row.category ?? '-'}`);
+      } catch (updateError) {
+        failed += 1;
+        console.error(`  ✗ ${row.slug}: ${errorMessage(updateError)}`);
       }
     }
   }
@@ -124,7 +117,9 @@ async function main(): Promise<void> {
   if (failed > 0) process.exitCode = 1;
 }
 
-main().catch((error: unknown) => {
+main()
+  .finally(() => cerrarDb())
+  .catch((error: unknown) => {
   console.error(`\nVEKTORA/SKILLS: falló -> ${errorMessage(error)}\n`);
   process.exitCode = 1;
 });

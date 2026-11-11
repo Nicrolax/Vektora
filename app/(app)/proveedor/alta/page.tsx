@@ -1,54 +1,17 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/session';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { toNumber, type PgNumeric } from '@/lib/supabase/types';
+import { requirePermiso } from '@/lib/auth/session';
+import { perfilProveedor } from '@/lib/consultas';
 import { Panel } from '@/components/ui/primitivas';
 import { FormularioProveedor } from './formulario';
 
-export const metadata = { title: 'Mi perfil de proveedor · VEKTORA' };
+export const metadata = { title: 'Mi perfil de proveedor' };
 
 /** La vectorización del perfil llama al modelo de embeddings; 10 s se quedan cortos. */
 export const maxDuration = 60;
 
 export default async function AltaProveedor() {
-  const user = await requireUser();
-  const supabase = await getSupabaseServer();
-
-  const { data } = await supabase
-    .from('provider_profiles')
-    .select(
-      'id, headline, summary, hourly_rate_usd, min_task_budget_usd, availability_hours_week, accepts_auto_assign',
-    )
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  const perfil = data as unknown as {
-    id: string;
-    headline: string | null;
-    summary: string | null;
-    hourly_rate_usd: PgNumeric | null;
-    min_task_budget_usd: PgNumeric | null;
-    availability_hours_week: number | null;
-    accepts_auto_assign: boolean;
-  } | null;
-
-  let habilidades: { slug: string; level: number; years: number | null }[] = [];
-  if (perfil !== null) {
-    const { data: filas } = await supabase
-      .from('provider_skills')
-      .select('level, years_experience, skills!inner(slug)')
-      .eq('provider_profile_id', perfil.id);
-
-    habilidades = ((filas ?? []) as unknown as Array<{
-      level: number;
-      years_experience: PgNumeric | null;
-      skills: { slug: string } | { slug: string }[];
-    }>).map((fila) => ({
-      slug: Array.isArray(fila.skills) ? (fila.skills[0]?.slug ?? '') : fila.skills.slug,
-      level: fila.level,
-      years: toNumber(fila.years_experience),
-    }));
-  }
+  const user = await requirePermiso('proveedor:perfil');
+  const perfil = await perfilProveedor(user.id);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -76,11 +39,11 @@ export default async function AltaProveedor() {
               : {
                   headline: perfil.headline ?? '',
                   summary: perfil.summary ?? '',
-                  hourlyRateUsd: toNumber(perfil.hourly_rate_usd),
-                  minTaskBudgetUsd: toNumber(perfil.min_task_budget_usd),
-                  availabilityHoursWeek: perfil.availability_hours_week,
-                  acceptsAutoAssign: perfil.accepts_auto_assign,
-                  skills: habilidades,
+                  hourlyRateUsd: perfil.hourlyRateUsd,
+                  minTaskBudgetUsd: perfil.minTaskBudgetUsd,
+                  availabilityHoursWeek: perfil.availabilityHoursWeek,
+                  acceptsAutoAssign: perfil.acceptsAutoAssign,
+                  skills: perfil.skills,
                 }
           }
         />

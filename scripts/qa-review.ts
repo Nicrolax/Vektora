@@ -16,7 +16,7 @@ import '@/lib/env';
 
 import { errorMessage } from '@/lib/ai/errors';
 import { createQaJudge, getQaConfig, type JudgeResult } from '@/lib/qa';
-import { isSupabaseAdminConfigured } from '@/lib/supabase/admin';
+import { cerrarDb, dbConfigurada, getDb } from '@/lib/db';
 
 function line(label: string, value: string): void {
   console.log(`  ${label.padEnd(24)} ${value}`);
@@ -164,8 +164,8 @@ function report(result: JudgeResult): void {
 }
 
 async function main(): Promise<void> {
-  if (!isSupabaseAdminConfigured()) {
-    console.error('\nFaltan SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY en .env.local.\n');
+  if (!dbConfigurada()) {
+    console.error('\nFaltan DB_HOST, DB_NAME, DB_USER y/o DB_PASSWORD en .env (ver .env.example).\n');
     process.exitCode = 1;
     return;
   }
@@ -196,11 +196,8 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    const { SupabaseQaRepository } = await import('@/lib/qa');
-    const { getSupabaseAdmin } = await import('@/lib/supabase/admin');
-    const deliverableId = await new SupabaseQaRepository(
-      getSupabaseAdmin(),
-    ).latestDeliverableForTask(taskId);
+    const { PostgresQaRepository } = await import('@/lib/qa');
+    const deliverableId = await new PostgresQaRepository(getDb()).latestDeliverableForTask(taskId);
     if (deliverableId === null) {
       console.error(`\nLa tarea ${taskId} no tiene ningún entregable.\n`);
       process.exitCode = 1;
@@ -219,7 +216,9 @@ async function main(): Promise<void> {
   report(await judge.judge({ deliverableId, dryRun }));
 }
 
-main().catch((error: unknown) => {
+main()
+  .finally(() => cerrarDb())
+  .catch((error: unknown) => {
   console.error(`\nVEKTORA/QA: falló -> ${errorMessage(error)}\n`);
   process.exitCode = 1;
 });

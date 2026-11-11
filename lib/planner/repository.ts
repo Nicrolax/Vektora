@@ -1,14 +1,14 @@
 /**
- * VEKTORA · FASE 3 — Acceso a datos del planificador.
+ * VEKTORA · FASE 3 — Acceso a datos del planificador (DAO).
  *
- * El planificador habla con esta interfaz, nunca con Supabase directamente: así su lógica
+ * El planificador habla con esta interfaz, nunca con la base directamente: así su lógica
  * (que es la parte con reglas de negocio) se prueba sin base de datos, y la persistencia
  * real queda concentrada en un único sitio auditable.
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { toNumber } from '@/lib/supabase/types';
-import type { ApplyProjectPlanResult, ProjectRow } from '@/lib/supabase/types';
+import { json, toNumber, type Consultor } from '@/lib/db';
+import type { ApplyProjectPlanResult, ProjectRow } from '@/lib/db/types';
+import { DatabaseError } from '@/lib/errores';
 import type { SkillCatalogEntry } from './prompts';
 
 export interface ProjectRecord {
@@ -83,36 +83,30 @@ export interface PlannerRepository {
   saveTaskEmbeddings(entries: readonly TaskEmbedding[]): Promise<number>;
 }
 
-export class PlannerRepositoryError extends Error {
-  readonly code: string | undefined;
-  readonly details: unknown;
-
-  constructor(message: string, code?: string, details?: unknown) {
-    super(message);
-    this.name = 'PlannerRepositoryError';
-    this.code = code;
-    this.details = details;
-  }
+/**
+ * Fallo de persistencia del planificador. Hereda de `DatabaseError`: conserva el SQLSTATE
+ * y nunca muestra el texto de la base a la persona.
+ */
+export class PlannerRepositoryError extends DatabaseError {
+  override readonly codigo: string = 'planner_repositorio';
 
   /** `true` cuando el fallo viene del trigger `prevent_dag_cycles` de la FASE 1. */
   get isDagViolation(): boolean {
-    return this.code === '23514';
+    return this.sqlstate === '23514';
   }
 }
 
-interface PostgrestErrorLike {
-  message: string;
-  code?: string;
-  details?: unknown;
-  hint?: unknown;
-}
-
-function fail(action: string, error: PostgrestErrorLike): never {
-  throw new PlannerRepositoryError(
-    `VEKTORA/PLANNER: ${action} falló -> ${error.message}`,
-    error.code,
-    error.details ?? error.hint,
-  );
+/** Re-lanza un fallo de la base como error del repositorio, sin perder el SQLSTATE. */
+function fail(action: string, error: unknown): never {
+  if (error instanceof DatabaseError) {
+    throw new PlannerRepositoryError(
+      `VEKTORA/PLANNER: ${action} falló -> ${error.message}`,
+      error.sqlstate,
+      error.details,
+      { cause: error },
+    );
+  }
+  throw error;
 }
 
 const PROJECT_COLUMNS =
@@ -141,65 +135,82 @@ function toProjectRecord(row: ProjectSelection): ProjectRecord {
     status: row.status,
     visibility: row.visibility,
     currency: row.currency,
-    // `numeric` de PostgreSQL llega como string por PostgREST: se normaliza aquí y no en
-    // el planificador, que no debe conocer esa peculiaridad.
+    // `numeric` llega como string desde `pg`: se normaliza aquí y no en el planificador,
+    // que no debe conocer esa peculiaridad.
     budgetTotal: toNumber(row.budget_total),
     deadline: row.deadline,
   };
 }
 
-export class SupabasePlannerRepository implements PlannerRepository {
-  constructor(private readonly client: SupabaseClient) {}
+/** Implementación sobre PostgreSQL. Todas las consultas son parametrizadas (R9). */
+export class PostgresPlannerRepository implements PlannerRepository {
+  constructor(private readonly db: Consultor) {}
 
   async fetchSkillCatalog(): Promise<SkillCatalogEntry[]> {
-    const { data, error } = await this.client
-      .from('skills')
-      .select('slug, name, category')
-      .eq('is_active', true)
-      .order('category', { ascending: true })
-      .order('slug', { ascending: true });
-
-    if (error !== null) fail('leer el catálogo de skills', error);
-    return (data ?? []) as SkillCatalogEntry[];
+    try {
+      return await this.db.query<SkillCatalogEntry>(
+        `select slug, name, category
+           from public.skills
+          where is_active
+          order by category asc nulls last, slug asc`,
+      );
+    } catch (error) {
+      fail('leer el catálogo de skills', error);
+    }
   }
 
   async registerSkills(slugs: readonly string[]): Promise<number> {
     if (slugs.length === 0) return 0;
-    const { data, error } = await this.client.rpc('register_skills', { p_slugs: [...slugs] });
-    if (error !== null) fail('registrar skills nuevas', error);
-    return typeof data === 'number' ? data : 0;
+    try {
+      const fila = await this.db.one<{ r: number | null }>(
+        'select public.register_skills(p_slugs => $1::text[]) as r',
+        [slugs],
+      );
+      return typeof fila?.r === 'number' ? fila.r : 0;
+    } catch (error) {
+      fail('registrar skills nuevas', error);
+    }
   }
 
   async loadProject(projectId: string): Promise<ProjectRecord | null> {
-    const { data, error } = await this.client
-      .from('projects')
-      .select(PROJECT_COLUMNS)
-      .eq('id', projectId)
-      .maybeSingle();
-
-    if (error !== null) fail('cargar el proyecto', error);
-    return data === null ? null : toProjectRecord(data as ProjectSelection);
+    try {
+      const fila = await this.db.one<ProjectSelection>(
+        `select ${PROJECT_COLUMNS} from public.projects where id = $1`,
+        [projectId],
+      );
+      return fila === null ? null : toProjectRecord(fila);
+    } catch (error) {
+      fail('cargar el proyecto', error);
+    }
   }
 
   async createProject(input: CreateProjectInput): Promise<ProjectRecord> {
-    const { data, error } = await this.client
-      .from('projects')
-      .insert({
-        owner_id: input.ownerId,
-        title: input.title,
-        objective: input.objective,
-        budget_total: input.budgetTotal ?? null,
-        currency: input.currency ?? 'USD',
-        deadline: input.deadline ?? null,
-        visibility: input.visibility ?? 'private',
-        acceptance_policy: input.acceptancePolicy ?? {},
-        status: 'planning',
-      })
-      .select(PROJECT_COLUMNS)
-      .single();
-
-    if (error !== null) fail('crear el proyecto', error);
-    return toProjectRecord(data as ProjectSelection);
+    let fila: ProjectSelection | null;
+    try {
+      fila = await this.db.one<ProjectSelection>(
+        `insert into public.projects
+           (owner_id, title, objective, budget_total, currency, deadline, visibility,
+            acceptance_policy, status)
+         values ($1, $2, $3, $4, $5, $6, $7::public.project_visibility, $8::jsonb, 'planning')
+         returning ${PROJECT_COLUMNS}`,
+        [
+          input.ownerId,
+          input.title,
+          input.objective,
+          input.budgetTotal ?? null,
+          input.currency ?? 'USD',
+          input.deadline ?? null,
+          input.visibility ?? 'private',
+          json(input.acceptancePolicy ?? {}),
+        ],
+      );
+    } catch (error) {
+      fail('crear el proyecto', error);
+    }
+    if (fila === null) {
+      throw new PlannerRepositoryError('VEKTORA/PLANNER: el insert no devolvió el proyecto');
+    }
+    return toProjectRecord(fila);
   }
 
   async applyPlan(
@@ -208,16 +219,20 @@ export class SupabasePlannerRepository implements PlannerRepository {
     edges: readonly PersistableEdge[],
     metadata: Record<string, unknown>,
   ): Promise<ApplyPlanResult> {
-    const { data, error } = await this.client.rpc('apply_project_plan', {
-      p_project_id: projectId,
-      p_tasks: tasks,
-      p_dependencies: edges,
-      p_planner_metadata: metadata,
-    });
-
-    if (error !== null) fail('aplicar el plan', error);
-
-    const payload = (data ?? {}) as Partial<ApplyProjectPlanResult>;
+    let payload: Partial<ApplyProjectPlanResult> = {};
+    try {
+      const fila = await this.db.one<{ r: Partial<ApplyProjectPlanResult> | null }>(
+        `select public.apply_project_plan(
+                  p_project_id       => $1::uuid,
+                  p_tasks            => $2::jsonb,
+                  p_dependencies     => $3::jsonb,
+                  p_planner_metadata => $4::jsonb) as r`,
+        [projectId, json(tasks), json(edges), json(metadata)],
+      );
+      payload = fila?.r ?? {};
+    } catch (error) {
+      fail('aplicar el plan', error);
+    }
     return {
       projectId,
       taskCount: payload.task_count ?? tasks.length,
@@ -229,19 +244,21 @@ export class SupabasePlannerRepository implements PlannerRepository {
   async saveTaskEmbeddings(entries: readonly TaskEmbedding[]): Promise<number> {
     let saved = 0;
     for (const entry of entries) {
-      const { error } = await this.client
-        .from('project_tasks')
-        .update({
-          embedding: entry.vector,
-          embedding_model: entry.model,
-          embedding_updated_at: new Date().toISOString(),
-        })
-        .eq('id', entry.taskId);
-
-      // Un embedding que no se guarda degrada el matching de la FASE 4, pero no invalida
-      // el plan: se cuenta y se reporta en el resultado en lugar de abortar.
-      if (error === null) saved += 1;
-      else console.warn(`[vektora/planner] embedding de ${entry.taskId}: ${error.message}`);
+      try {
+        await this.db.execute(
+          `update public.project_tasks
+              set embedding = $2::extensions.vector, embedding_model = $3,
+                  embedding_updated_at = now()
+            where id = $1`,
+          [entry.taskId, entry.vector, entry.model],
+        );
+        saved += 1;
+      } catch (error) {
+        // Un embedding que no se guarda degrada el matching de la FASE 4, pero no invalida
+        // el plan: se cuenta y se reporta en el resultado en lugar de abortar.
+        const motivo = error instanceof Error ? error.message : String(error);
+        console.warn(`[vektora/planner] embedding de ${entry.taskId}: ${motivo}`);
+      }
     }
     return saved;
   }

@@ -9,13 +9,13 @@
  *     skills: [{ slug: 'React 18' }, { slug: 'nextjs' }],
  *   });
  *
- * Sin argumentos usa Supabase con el cliente `service_role`. Inyectando `repository` se
+ * Sin argumentos usa PostgreSQL con la identidad de los agentes. Inyectando `repository` se
  * prueba todo el dominio sin red ni base de datos.
  */
 
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getDb } from '@/lib/db';
 import { ProviderOnboarding, type ProviderOnboardingOptions } from './provider';
-import { SupabaseProviderRepository } from './repository';
+import { PostgresProviderRepository } from './repository';
 
 export {
   ProviderError,
@@ -26,7 +26,7 @@ export type { ProviderOnboardingOptions, RegisterProviderResult } from './provid
 
 export {
   ProviderRepositoryError,
-  SupabaseProviderRepository,
+  PostgresProviderRepository,
 } from './repository';
 export type {
   PersonProfilePayload,
@@ -67,11 +67,11 @@ export type {
   RegisterProviderInput,
 } from './schemas';
 
-/** Construye el onboarding listo para usar contra Supabase con `service_role`. */
+/** Construye el onboarding listo para usar contra PostgreSQL con la identidad de los agentes. */
 export function createProviderOnboarding(
   options: Partial<ProviderOnboardingOptions> = {},
 ): ProviderOnboarding {
-  const repository = options.repository ?? new SupabaseProviderRepository(getSupabaseAdmin());
+  const repository = options.repository ?? new PostgresProviderRepository(getDb());
   return new ProviderOnboarding({
     repository,
     ...(options.embeddings === undefined ? {} : { embeddings: options.embeddings }),
