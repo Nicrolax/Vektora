@@ -107,8 +107,7 @@ jobs:
             local titulo="$1"; shift
             if ! "$@" > salida.txt 2>&1; then
               cat salida.txt
-              echo "::error title=${titulo}::$(tail -c 1500 salida.txt | tr '
-' ' ' | tr -d '')"
+              echo "::error title=${titulo}::$(tail -c 1500 salida.txt | tr '\n\r' '  ')"
               exit 1
             fi
             cat salida.txt
