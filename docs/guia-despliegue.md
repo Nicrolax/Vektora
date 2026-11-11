@@ -413,6 +413,8 @@ Abrir la URL y entrar con `cliente@vektora.test` / `Demo-Vektora-2026`. Se entra
 `http://`, por eso el ConfigMap pone `COOKIE_SECURE=false` (una cookie `Secure` el navegador la
 descartaría por http).
 
+![Captura 7: kubectl get pods,svc,pvc en minikube](capturas/07-kubectl-minikube.png)
+
 📷 **Captura 7** — `kubectl get pods,svc` con `vektora-db` y `vektora-app` en `Running 1/1` y
 los dos Services.
 
