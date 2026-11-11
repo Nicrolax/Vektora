@@ -242,6 +242,12 @@ estado están en `docs/guia-despliegue.md`. Datos de prueba: contraseña públic
 `Demo-Vektora-2026` (ver `db/seeds/02_datos_demo.sql`); el admin se crea con
 `npm run cuenta:admin` en cada base.
 
+Seguridad (Fase 5): `docs/informe-seguridad.md`. Workflows `seguridad.yml` (gitleaks,
+`npm audit`, Trivy), `codeql.yml`, `zap.yml` (manual, SOLO contra la URL de Render) y
+Dependabot. Las cabeceras de seguridad y la redirección sin sesión viven en
+`next.config.ts` y las fija `tests/next-config.test.ts`. `imagen.yml` no publica una imagen
+con vulnerabilidades altas o críticas corregibles.
+
 ## Documentación de diseño
 
 El razonamiento detallado de cada fase (decisiones, bugs encontrados, calibraciones) está en

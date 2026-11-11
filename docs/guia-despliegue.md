@@ -438,3 +438,26 @@ uid 1001.
 | minikube con VirtualBox: «VT-X/AMD-v not enabled» | Hyper-V ocupa la virtualización | `--no-vtx-check`, o usar `--driver=hyperv` desde una consola de administrador |
 | minikube con VirtualBox: `VERR_INTNET_FLT_IF_NOT_FOUND` (no encuentra la red «Host-Only») | El adaptador Host-Only de VirtualBox quedó en un estado que el filtro de red no reconoce | PowerShell **como administrador**: `Get-NetAdapter \| Where InterfaceDescription -match 'VirtualBox Host-Only' \| Restart-NetAdapter`; si el filtro estuviera desactivado, `… \| Enable-NetAdapterBinding -ComponentID oracle_VBoxNetLwf`. Después `minikube delete` y `minikube start` de nuevo. Si sigue, reiniciar la PC, reinstalar VirtualBox o usar Docker Desktop (`--driver=docker`) |
 | `OOMKilled` en la app | Límite de memoria chico para la carga | Subir `limits.memory` en `app-deployment.yaml` |
+
+## 5. Seguridad (SSDLC)
+
+El detalle de cada análisis (qué encontró, qué se corrigió y qué queda) está en
+[`informe-seguridad.md`](informe-seguridad.md). Para repetirlos:
+
+| Análisis | Cómo correrlo | Dónde ver el resultado |
+|---|---|---|
+| SCA | `npm audit` en local; en GitHub, cada push corre el workflow **Seguridad** | Resumen de la ejecución en *Actions* |
+| Dependabot | Solo: lunes de mañana | Pestaña *Pull requests* |
+| SAST | Workflow **CodeQL** en cada push; SonarLint (*SonarQube for IDE*) en VS Code | *Security → Code scanning*; panel *Problems* de VS Code |
+| Imagen | Workflow **Imagen** (bloquea la publicación) y **Seguridad** (Trivy sobre `latest`) | Resumen de la ejecución |
+| DAST | *Actions → ZAP → Run workflow* (solo contra nuestra URL de Render) | Resumen de la ejecución y artefacto `zap` con el reporte HTML |
+| Secretos | Workflow **Seguridad**, job `secretos` (gitleaks sobre todo el historial) | Resumen de la ejecución |
+
+Las cabeceras de seguridad se pueden ver en cualquier entorno con:
+
+```bash
+curl -sI https://vektora.onrender.com/entrar
+```
+
+Tienen que aparecer `content-security-policy`, `x-frame-options: DENY`,
+`strict-transport-security`, `x-content-type-options: nosniff`, etc.
