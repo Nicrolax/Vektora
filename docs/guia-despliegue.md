@@ -8,7 +8,7 @@ ayuda: cada paso dice qué hacer, qué se tiene que ver y qué hacer si no se ve
 |---|---|---|---|
 | 1 | App + base en contenedores; imagen en ghcr.io | Tu PC con Docker | ✅ esta guía |
 | 2 | Base en **Aiven** (SSL) + app en **Render** (HTTPS) | Nube | ✅ esta guía |
-| 3 | App + base en **Kubernetes** | minikube en tu PC | próxima fase |
+| 3 | App + base en **Kubernetes** | minikube en tu PC | ✅ esta guía |
 
 > **Credenciales.** Ningún archivo del repositorio tiene contraseñas. Los valores reales van
 > en `.env` (ignorado por Git y por Docker), en el panel de Render o en un Secret de
@@ -354,4 +354,80 @@ respuesta muestra qué tareas se adjudicaron y qué entregas evaluó el juez.
 
 ## 4. Nivel 3 — Kubernetes (minikube)
 
-*Próxima fase del examen.*
+La app **y la base** corren dentro del clúster. Decisión: la base va dentro de Kubernetes
+(con un volumen persistente) para que el taller sea autónomo y no dependa de internet ni de
+Aiven. En Render se usa Aiven; el código es exactamente el mismo, solo cambian las variables.
+
+### 4.1 Qué hay en `k8s/`
+
+| Archivo | Contenido |
+|---|---|
+| `app-deployment.yaml` | Imagen `ghcr.io/nicrolax/vektora:latest`; `envFrom` ConfigMap + Secret; `requests` 250m/256Mi, `limits` 1 CPU/512Mi; `readinessProbe` y `livenessProbe` HTTP en `/health`; `runAsNonRoot` (uid 1001), sin escalada de privilegios, `readOnlyRootFilesystem` |
+| `app-service.yaml` | `NodePort` 30080 → 3000 |
+| `db-deployment.yaml` | `pgvector/pgvector:pg16` con `PersistentVolumeClaim` de 1 Gi; `requests`/`limits`; probes `exec: pg_isready`; los scripts de `sql/` montados en `/docker-entrypoint-initdb.d` |
+| `db-service.yaml` | `ClusterIP` `vektora-db` (la base no se expone fuera del clúster) |
+| `configmap.yaml` | Configuración no secreta: `DB_HOST=vektora-db`, `DB_PORT`, `DB_NAME`, `DB_SSL=disable`, `PORT`… |
+| `secret.yaml.example` | Los nombres de los secretos con valores de ejemplo. El real, `k8s/secret.yaml`, está en `.gitignore` |
+| `kustomization.yaml` | `kubectl apply -k k8s/` aplica todo |
+
+### 4.2 Instalar minikube y kubectl (gratis)
+
+- **kubectl**: `winget install -e --id Kubernetes.kubectl` (Windows) o
+  <https://kubernetes.io/docs/tasks/tools/>.
+- **minikube**: <https://minikube.sigs.k8s.io/docs/start/>. En Windows, si el instalador pide
+  administrador, alcanza con bajar `minikube-windows-amd64.exe` de
+  <https://github.com/kubernetes/minikube/releases/latest>, renombrarlo a `minikube.exe` y
+  dejarlo en una carpeta del `PATH`.
+- Un *driver*: con Docker Desktop, `--driver=docker`; sin Docker, **VirtualBox** (gratis):
+  `--driver=virtualbox`. En Windows con Hyper-V activo, agregar `--no-vtx-check`.
+
+```bash
+minikube start --driver=virtualbox --cpus=4 --memory=6144 --no-vtx-check
+kubectl get nodes          # minikube   Ready
+```
+
+### 4.3 Desplegar
+
+```bash
+npm run k8s:secreto                                 # k8s/secret.yaml con valores aleatorios
+kubectl apply -f k8s/secret.yaml                    # credenciales → Secret
+kubectl create configmap vektora-sql --from-file=sql/   # scripts SQL → ConfigMap (~170 KB < 1 MiB)
+kubectl apply -k k8s/                               # ConfigMap, base, app y servicios
+kubectl get pods,svc -w                             # esperar 1/1 Running en los dos pods
+```
+
+Sin Node: `cp k8s/secret.yaml.example k8s/secret.yaml` y reemplazar cada `CAMBIAR-…`.
+
+La primera vez la base tarda unos segundos en cargar `sql/`; la app recién pasa a *Ready*
+cuando `/health` confirma que la base responde (eso hace la `readinessProbe`).
+
+### 4.4 Evidencia
+
+```bash
+kubectl get pods,svc
+minikube service vektora-app --url        # http://<ip-de-minikube>:30080
+kubectl exec deploy/vektora-db -- psql -U vektora -d vektora -c "select count(*) from public.project_tasks"
+```
+
+Abrir la URL y entrar con `cliente@vektora.test` / `Demo-Vektora-2026`. Se entra por
+`http://`, por eso el ConfigMap pone `COOKIE_SECURE=false` (una cookie `Secure` el navegador la
+descartaría por http).
+
+📷 **Captura 7** — `kubectl get pods,svc` con `vektora-db` y `vektora-app` en `Running 1/1` y
+los dos Services.
+
+La misma prueba corre sola en GitHub Actions (workflow **Kubernetes**, con un clúster `kind`)
+cada vez que cambia `k8s/`: comprueba pods en Running, 8 tareas en la base, `/health` 200 y
+uid 1001.
+
+### 4.5 Problemas frecuentes
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| `vektora-db` en `CreateContainerConfigError` | Falta el Secret o el ConfigMap `vektora-sql` | `kubectl apply -f k8s/secret.yaml` y `kubectl create configmap vektora-sql --from-file=sql/` |
+| `vektora-app` en `Running 0/1` | `/health` da 503: la base todavía carga `sql/` o la contraseña no coincide | `kubectl logs deploy/vektora-db`; que `POSTGRES_PASSWORD` y `DB_PASSWORD` sean iguales |
+| Datos de prueba ausentes | El PVC ya existía (los scripts solo corren con el volumen vacío) | `kubectl delete -k k8s/ && kubectl delete pvc vektora-db-datos` y volver a aplicar |
+| `ImagePullBackOff` | La imagen de ghcr.io no es pública o no hay internet | Paquete `vektora` en GitHub → *Change visibility → Public* |
+| minikube con VirtualBox: «VT-X/AMD-v not enabled» | Hyper-V ocupa la virtualización | `--no-vtx-check`, o usar `--driver=hyperv` desde una consola de administrador |
+| minikube con VirtualBox: `VERR_INTNET_FLT_IF_NOT_FOUND` (no encuentra la red «Host-Only») | Windows desactivó el filtro de red de VirtualBox en el adaptador Host-Only | PowerShell **como administrador**: `Get-NetAdapter \| Where InterfaceDescription -match 'VirtualBox Host-Only' \| Enable-NetAdapterBinding -ComponentID VBoxNetLwf`; después `minikube delete` y `minikube start` de nuevo. Si sigue, reinstalar VirtualBox o usar Docker Desktop (`--driver=docker`) |
+| `OOMKilled` en la app | Límite de memoria chico para la carga | Subir `limits.memory` en `app-deployment.yaml` |
