@@ -101,7 +101,7 @@ jobs:
         run: echo "imagen=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/vektora:latest" >> "$GITHUB_OUTPUT"
 
       - name: Trivy (tabla para el informe)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.nombre.outputs.imagen }}
           format: table
