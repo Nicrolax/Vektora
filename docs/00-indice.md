@@ -31,13 +31,20 @@ en un grafo acíclico de tareas con criterios de aceptación, adjudica cada tare
 más adecuado, evalúa lo entregado contra esos criterios y desbloquea las tareas siguientes.
 Nadie aprueba nada por el camino.
 
+## Examen de despliegue
+
+| Archivo | Para qué |
+|---|---|
+| [`guia-despliegue.md`](guia-despliegue.md) | **Paso a paso**: Docker y compose (Nivel 1), Aiven y Render (Nivel 2), minikube (Nivel 3), seguridad. Con las capturas |
+| [`informe-seguridad.md`](informe-seguridad.md) | Análisis SSDLC (SCA, SAST, Trivy, ZAP, gitleaks): hallazgos, correcciones y hardening |
+| [`diagramas/`](diagramas/) | Arquitectura, modelo de datos, capas y flujo de despliegue, en Mermaid |
+| [`defensa.md`](defensa.md) | Guion de la demo, R1–R12 con archivo y línea, y preguntas probables por archivo |
+
 ## Documentos auxiliares
 
 | Archivo | Para qué |
 |---|---|
 | [`07-repositorio-y-auditoria.md`](07-repositorio-y-auditoria.md) | Preparación del repositorio y del análisis estático |
-| [`08-estado-de-implementacion.md`](08-estado-de-implementacion.md) | Estado de las siete fases, puesta en marcha y guion de demostración |
-| [`09-despliegue.md`](09-despliegue.md) | Puesta en producción en Supabase y Vercel, paso a paso |
 | [`10-guia-para-el-equipo.md`](10-guia-para-el-equipo.md) | **Cómo funciona el proyecto en palabras simples.** Para quien no escribió el código |
 | [`11-declaracion-de-uso-de-ia.md`](11-declaracion-de-uso-de-ia.md) | **Declaración formal de uso de IA y de autoría.** Modelos empleados y alcance de lo declarado |
 

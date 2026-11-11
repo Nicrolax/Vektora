@@ -11,11 +11,13 @@ diseño.
 |---|---|---|
 | **Cliente** | Humano | Plantea un objetivo y un presupuesto; recibe el resultado |
 | **Proveedor** | Humano | Declara habilidades; ejecuta tareas y entrega evidencia |
+| **Administrador** | Humano | Gestiona cuentas (rol, suspensión, baja) y el catálogo de skills. No decide nada del ciclo |
 | **Agente Planificador** | Sistema | Convierte el objetivo en un grafo de tareas |
 | **Agente de Emparejamiento** | Sistema | Selecciona y adjudica el proveedor de cada tarea |
 | **Agente Evaluador (Juez)** | Sistema | Dictamina si un entregable cumple los criterios |
 | **Proveedores de IA** | Externo | Groq y Google AI Studio: generación y vectorización |
-| **Supabase** | Externo | Persistencia, autenticación y políticas de acceso |
+| **Reloj (GitHub Actions)** | Externo | Dispara a los agentes de emparejamiento y evaluación cada 15 y 10 minutos |
+| **PostgreSQL** (Aiven / local) | Externo | Persistencia y políticas de acceso por fila (RLS). El login es propio (BCrypt + cookie de sesión) |
 
 ```mermaid
 flowchart LR
@@ -25,7 +27,8 @@ flowchart LR
     Matcher(("Agente de<br/>Emparejamiento"))
     Juez(("Agente<br/>Evaluador"))
 
-    Cron(("Trabajos<br/>programados"))
+    Cron(("Reloj<br/>GitHub Actions"))
+    Admin(("Administrador"))
 
     CU1["CU-01<br/>Crear proyecto"]
     CU2["CU-02<br/>Registrarse como proveedor"]
@@ -34,9 +37,16 @@ flowchart LR
     CU5["CU-05<br/>Evaluar un entregable"]
     CU6["CU-06<br/>Avanzar el proyecto"]
     CU7["CU-07<br/>Consultar estado"]
+    CU8["CU-08<br/>Gestionar proyecto"]
+    CU9["CU-09<br/>Buscar tareas y ver reportes"]
+    CU10["CU-10<br/>Administrar cuentas y skills"]
 
     Cliente --> CU1
     Cliente --> CU7
+    Cliente --> CU8
+    Cliente --> CU9
+    Proveedor --> CU9
+    Admin --> CU10
     CU1 -.->|incluye| Planificador
     Proveedor --> CU2
     Proveedor --> CU4
@@ -153,7 +163,8 @@ nadie lo solicite)
   candidato mejor en un ciclo posterior.
 - Cada candidatura conserva la explicación con la que se la puntuó, consultable desde la
   interfaz.
-- El visualizador del grafo refleja el cambio en vivo.
+- El visualizador del grafo refleja el cambio en el siguiente sondeo (cada 15 s mientras la
+  pestaña está visible).
 
 **Flujos alternativos**
 - *2a. Ningún candidato supera los filtros:* el sistema informa qué filtro excluyó a cada
@@ -242,7 +253,7 @@ secundarios:** Proveedores de IA
 **Flujo principal**
 1. El disparador de base de datos recalcula la disponibilidad de las tareas del proyecto.
 2. Toda tarea bloqueada cuyas dependencias estén aprobadas pasa a disponible.
-3. El visualizador del grafo refleja el cambio en vivo, sin recargar.
+3. El visualizador del grafo refleja el cambio en el siguiente sondeo, sin recargar.
 4. Si todas las tareas del proyecto están aprobadas, el proyecto pasa a completado.
 
 **Postcondición**
@@ -268,7 +279,8 @@ secundarios:** Proveedores de IA
    proveedor asignado.
 3. El Cliente abre una tarea y consulta sus criterios de aceptación, las candidaturas con su
    puntuación desglosada, los entregables y el veredicto del evaluador.
-4. El sistema actualiza la vista en vivo a medida que los agentes avanzan.
+4. Mientras la pestaña está visible, la página consulta cada 15 s una «firma» del proyecto
+   (`/api/proyectos/[id]/firma`) y se refresca sola si cambió.
 
 **Postcondición**
 - El Cliente conoce el avance y el fundamento de cada decisión automática, sin haber
@@ -277,6 +289,75 @@ secundarios:** Proveedores de IA
 **Flujos alternativos**
 - *2a. El proyecto pertenece a otro usuario:* las políticas de acceso lo impiden y el sistema
   responde como si no existiera.
+
+---
+
+## CU-08 · Gestionar proyecto
+
+**Actor principal:** Cliente
+
+**Precondición**
+- El Cliente tiene la sesión iniciada y es propietario del proyecto.
+
+**Flujo principal**
+1. El Cliente abre *Gestionar* desde el proyecto.
+2. Edita título, descripción o visibilidad (privado / público) y guarda.
+3. El sistema valida los cambios y los aplica **como el Cliente** (`asUser`): la política RLS
+   solo deja modificar proyectos propios.
+4. Puede **pausar** (desde `planned` o `active`), **reanudar** (desde `paused`) o
+   **cancelar** el proyecto. Los demás estados los decide el sistema.
+
+**Postcondición**
+- El proyecto queda con los datos o el estado nuevos. Un proyecto pausado o cancelado deja de
+  avanzar: los agentes no adjudican sus tareas.
+
+**Flujos alternativos**
+- *4a. Eliminar un proyecto con historial:* la reputación y la auditoría son de solo
+  agregado y no se pueden borrar. El sistema lo explica y sugiere cancelarlo, que conserva el
+  historial.
+- *4b. Transición imposible* (por ejemplo, pausar un proyecto completado): el sistema
+  responde «El proyecto no se puede pausar en su estado actual».
+
+---
+
+## CU-09 · Buscar tareas y ver reportes
+
+**Actor principal:** Cliente o Proveedor
+
+**Flujo principal**
+1. En *Buscar*, la persona combina filtros: texto, estado, skill, rango de presupuesto y «sin
+   asignar».
+2. El sistema arma la consulta con esos filtros, siempre parametrizada, une tareas con
+   proyectos y perfiles, y muestra solo lo que la persona puede ver (sus proyectos y los
+   públicos).
+3. En *Reportes* ve totales por proyecto, por estado y por proveedor (`COUNT`, `SUM`, `AVG`
+   con `GROUP BY`).
+
+**Postcondición**
+- La persona encuentra tareas y entiende el avance agregado sin ver datos ajenos.
+
+---
+
+## CU-10 · Administrar cuentas y skills
+
+**Actor principal:** Administrador
+
+**Precondición**
+- La cuenta tiene rol `admin` (se crea con `npm run cuenta:admin`; no existe en los datos de
+  prueba porque su contraseña no puede ser pública).
+
+**Flujo principal**
+1. En *Administración → Cuentas*, el Administrador busca una cuenta y cambia su rol, la
+   suspende, la reactiva o la borra.
+2. En *Administración → Skills*, da de alta una skill del catálogo, la edita, la desactiva o
+   la borra.
+3. Cada cambio corre como el Administrador (`asUser`) y la base lo vuelve a comprobar con RLS.
+
+**Flujos alternativos**
+- *1a. Quitarse el rol de admin, suspenderse o borrarse a sí mismo:* el sistema lo impide,
+  para no quedar sin nadie que administre.
+- *1b./2a. Borrar algo con historial* (una cuenta con reputación, una skill en uso): el
+  sistema explica qué hacer en su lugar, que es suspender la cuenta o desactivar la skill.
 
 ---
 

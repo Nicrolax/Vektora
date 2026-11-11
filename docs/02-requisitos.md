@@ -96,7 +96,7 @@ sistema** e indica cómo se demuestra. Los no funcionales llevan criterio medibl
 | RF-8.2 | Permitir abrir cualquier tarea para ver criterios, candidaturas, entregables y veredicto | Navegación desde el grafo |
 | RF-8.3 | Ofrecer al cliente un panel con sus proyectos, su avance y su presupuesto consumido | Panel de cliente |
 | RF-8.4 | Ofrecer al proveedor un panel con sus tareas asignadas, entregas y reputación | Panel de proveedor |
-| RF-8.5 | Reflejar los cambios de estado en vivo, sin recargar la página | Dos ventanas abiertas se actualizan a la vez |
+| RF-8.5 | Reflejar los cambios de estado sin recargar la página (sondeo cada 15 s mientras la pestaña está visible) | Con dos ventanas abiertas, un cambio en una aparece en la otra en 15 s como máximo |
 | RF-8.6 | Mostrar el consumo de la capa de IA por proyecto: operaciones, proveedor, estado y coste | Vista de observabilidad |
 
 ## Requisitos no funcionales

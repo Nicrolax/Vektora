@@ -1,119 +1,124 @@
 # Diagrama de infraestructura
 
-## Componentes de despliegue
+VEKTORA corre en tres entornos con **la misma imagen Docker**; solo cambian las variables de
+entorno. Todo en servicios gratuitos, sin tarjeta.
+
+| Nivel | Dónde | Base | App |
+|---|---|---|---|
+| 1 · Local | PC | Contenedor `pgvector/pgvector:pg16` | Contenedor de la app, `docker compose up` |
+| 2 · Nube | Internet | **Aiven** PostgreSQL 18, conexión **SSL** | **Render**, **HTTPS** en `https://vektora.onrender.com` |
+| 3 · Taller | minikube | Deployment + PVC de 1 Gi | Deployment + Service NodePort |
+
+## Componentes de producción (Nivel 2)
 
 ```mermaid
 flowchart TB
     subgraph nav["Cliente · Navegador"]
-        ui["Next.js App Router<br/>React 19 · Tailwind · shadcn/ui"]
+        ui["Interfaz Next.js<br/>React 19 · Tailwind"]
     end
 
-    subgraph vercel["Vercel · free tier"]
+    subgraph render["Render · plan gratis"]
         direction TB
-        edge["Edge Network + CDN<br/>TLS 1.3 · :443"]
-        srv["Server Actions y Route Handlers<br/>Node.js 20 runtime"]
-        cron["Cron Jobs<br/>emparejamiento y evaluación"]
-        edge --> srv
-        cron -->|"HTTP interno"| srv
+        proxy["Proxy de Render<br/>TLS · :443 · http → https"]
+        srv["Contenedor VEKTORA (Dockerfile)<br/>Node.js 22 · Next.js 16 standalone<br/>Server Actions + Route Handlers<br/>usuario sin privilegios (uid 1001)"]
+        proxy --> srv
     end
 
-    subgraph supa["Supabase · free tier"]
+    subgraph aiven["Aiven · plan gratis"]
+        pg[("PostgreSQL 18 + pgvector<br/>RLS en 14 tablas · 47 políticas<br/>HNSW · coseno")]
+    end
+
+    subgraph gh["GitHub · gratis"]
         direction TB
-        rest["PostgREST<br/>:443 HTTPS"]
-        rt["Realtime<br/>:443 WSS"]
-        auth["GoTrue · autenticación<br/>:443 HTTPS"]
-        pg[("PostgreSQL 16.13<br/>:5432 · red interna<br/>pgvector 0.6.0 · HNSW")]
-        rest --> pg
-        rt --> pg
-        auth --> pg
+        reloj["Actions · Agentes<br/>emparejar */15 · evaluar 5-59/10"]
+        ghcr[("ghcr.io<br/>imagen vektora")]
     end
 
     subgraph ia["Proveedores de IA"]
         direction TB
         groq["Groq<br/>api.groq.com :443<br/>openai/gpt-oss-120b"]
-        gem["Google AI Studio<br/>generativelanguage.googleapis.com :443<br/>gemini-3.6-flash<br/>gemini-embedding-001"]
+        gem["Google AI Studio<br/>generativelanguage.googleapis.com :443<br/>gemini-3.6-flash · gemini-embedding-001"]
     end
 
-    ui -->|"HTTPS :443<br/>navegación y acciones"| edge
-    ui -->|"HTTPS :443 · clave anónima<br/>JWT de sesión · sujeto a RLS"| rest
-    ui -->|"WSS :443 · suscripción<br/>cambios del grafo en vivo"| rt
-    ui -.->|"HTTPS :443 · OAuth / enlace mágico"| auth
-
-    srv -->|"HTTPS :443 · service_role<br/>solo servidor"| rest
-    srv -->|"HTTPS :443 · Bearer<br/>POST /openai/v1/chat/completions"| groq
-    srv -->|"HTTPS :443 · x-goog-api-key<br/>POST :generateContent / :embedContent"| gem
-
+    ui -->|"HTTPS :443<br/>cookie de sesión httpOnly · Secure"| proxy
+    srv -->|"PostgreSQL sobre TLS<br/>CA de Aiven verificada"| pg
+    srv -->|"HTTPS :443 · Bearer"| groq
+    srv -->|"HTTPS :443 · x-goog-api-key"| gem
     groq -.->|"respaldo automático si falla<br/>o agota cuota"| gem
+    reloj -->|"HTTPS :443 · POST /api/cron/*<br/>Bearer CRON_SECRET"| proxy
 ```
+
+Los diagramas de compose y de minikube están en
+[`diagramas/arquitectura.md`](diagramas/arquitectura.md), y el flujo de publicación en
+[`diagramas/despliegue.md`](diagramas/despliegue.md).
 
 ## Protocolos y puertos
 
 | Origen | Destino | Protocolo | Puerto | Autenticación |
 |---|---|---|---|---|
-| Navegador | Vercel Edge | HTTPS/HTTP2, TLS 1.3 | 443 | Cookie de sesión |
-| Navegador | Supabase PostgREST | HTTPS/REST | 443 | Clave anónima + JWT de sesión |
-| Navegador | Supabase Realtime | WebSocket seguro | 443 | JWT de sesión |
-| Navegador | Supabase GoTrue | HTTPS | 443 | Enlace mágico u OAuth |
-| Server Actions | Supabase PostgREST | HTTPS/REST y RPC | 443 | `Bearer <service_role>` |
-| Server Actions | Groq API | HTTPS/JSON | 443 | `Authorization: Bearer` |
-| Server Actions | Google AI Studio | HTTPS/JSON | 443 | Cabecera `x-goog-api-key` |
-| Cron de Vercel | Route Handlers | HTTPS interno | 443 | Secreto compartido de despliegue |
-| PostgREST / Realtime / GoTrue | PostgreSQL | TCP, red interna de Supabase | 5432 | Gestionado por la plataforma |
-| Verificación local | PostgreSQL desechable | TCP local | 5433 | `trust`, base efímera de pruebas |
+| Navegador | Render | HTTPS (TLS de Render) | 443 | Cookie `vektora_sesion` (JWT HS256) |
+| Render (proxy) | Contenedor | HTTP interno, `x-forwarded-proto: https` | el que fija Render | — |
+| App | Aiven PostgreSQL | PostgreSQL sobre TLS | el del servicio Aiven | Usuario y contraseña de `DB_*`, CA en `DB_SSL_CA` |
+| App | Groq | HTTPS/JSON | 443 | `Authorization: Bearer` |
+| App | Google AI Studio | HTTPS/JSON | 443 | Cabecera `x-goog-api-key` |
+| GitHub Actions | `/api/cron/emparejar`, `/api/cron/evaluar` | HTTPS | 443 | `Authorization: Bearer <CRON_SECRET>` |
+| Render | `/health` | HTTP interno | — | Ninguna (no expone datos internos) |
+| App (compose) | Base (compose) | TCP, red interna de compose | 5432 | `DB_*`, sin SSL (no sale de la PC) |
+| App (minikube) | Service `vektora-db` | TCP, `ClusterIP` | 5432 | Secret `vektora-secret`, sin SSL (no sale del clúster) |
 
-**Ninguna conexión directa a PostgreSQL desde la aplicación.** Todo pasa por PostgREST sobre
-HTTPS; el puerto 5432 no se expone fuera de la red interna de Supabase. Esa decisión es
-también la que obliga a que toda operación atómica esté escrita como función PL/pgSQL: el
-cliente HTTP no ofrece transacciones de varias sentencias.
+**La app habla directo con PostgreSQL** por el protocolo nativo, con el cliente `pg`. Eso
+permite transacciones de varias sentencias (`transaction()`, R7) y consultas parametrizadas
+(R9). En Aiven la conexión va **siempre por TLS y verificando el certificado** de la CA del
+proyecto, así que nadie puede hacerse pasar por el servidor de la base.
 
 ## Separación de privilegios
 
 Es la frontera que permite que el sistema sea autónomo sin ser inseguro.
 
-| Componente | Credencial | Alcance |
+| Quién | Cómo entra a la base | Alcance |
 |---|---|---|
-| Navegador | Clave anónima + JWT de sesión | Sujeto a las 44 políticas de acceso por fila: cada usuario ve solo lo suyo |
-| Server Actions | `service_role` | Bypassea las políticas; ejecuta los agentes autónomos |
-| Cron de Vercel | Secreto de despliegue, luego `service_role` | Dispara emparejamiento y evaluación sin que nadie inicie sesión |
+| Agentes (emparejar, evaluar), login, telemetría | `getDb().query(…)` como dueño de las tablas | Pleno: lo necesitan para operar sin que nadie inicie sesión |
+| Una persona desde la interfaz | `getDb().asUser(id, …)`: `SET LOCAL ROLE authenticated` + `auth.uid() = id` | Sujeto a las 47 políticas RLS: ve y cambia solo lo suyo y lo público |
+| GitHub Actions | Solo HTTPS a `/api/cron/*` con `CRON_SECRET` | No toca la base; si el secreto falta, la ruta responde 503 (cerrada) |
 
-La clave `service_role` **nunca llega al navegador**: solo se lee en el servidor, y el cliente
-administrador lanza una excepción si detecta un entorno de navegador. Los agentes operan con
-privilegios plenos desde el servidor, mientras cada persona que entra por la interfaz queda
-confinada a lo que las políticas le permiten ver.
+Las credenciales viven en el panel de Render, en el `.env` local y en el Secret de
+Kubernetes, nunca en el repositorio. `gitleaks` lo comprueba en cada push sobre todo el
+historial ([`informe-seguridad.md`](informe-seguridad.md)).
 
-Las credenciales viven en variables de entorno de Vercel y en el archivo local de desarrollo,
-que está excluido del control de versiones.
+## Por qué el reloj es parte de la infraestructura
 
-## Por qué los trabajos programados son parte de la infraestructura
-
-Sin un disparador periódico, el sistema solo avanzaría cuando alguien ejecutara una acción
-—y eso sería intervención humana disfrazada. Los trabajos programados de Vercel son lo que
-convierte el ciclo en verdaderamente autónomo: emparejan las tareas que quedaron disponibles
-y evalúan los entregables en cola, sin que nadie lo pida.
+Sin un disparador periódico, el sistema solo avanzaría cuando alguien ejecutara una acción,
+y eso sería intervención humana disfrazada. El workflow **Agentes** de GitHub Actions es lo
+que convierte el ciclo en verdaderamente autónomo: empareja las tareas que quedaron
+disponibles y evalúa los entregables en cola, sin que nadie lo pida. Render, en su plan
+gratis, no trae tareas programadas; GitHub Actions sí, y gratis.
 
 | Trabajo | Frecuencia | Qué hace |
 |---|---|---|
 | Emparejamiento | Cada 15 minutos | Adjudica las tareas disponibles al mejor candidato que supere el umbral |
-| Evaluación | Cada 10 minutos | Juzga los entregables en cola, del más antiguo al más reciente |
+| Evaluación | Cada 10 minutos (minuto 5, 15, 25…) | Juzga los entregables en cola, del más antiguo al más reciente |
 
-Ambos son idempotentes y toman el turno de forma exclusiva, de modo que dos ejecuciones
-solapadas no duplican trabajo ni reputación.
+Ambos son idempotentes y toman el turno de forma exclusiva, así que dos ejecuciones
+solapadas no duplican trabajo ni reputación. Si Render está dormido (plan gratis), el
+workflow reintenta hasta despertarlo.
 
 ## Entorno de desarrollo y verificación
 
 ```mermaid
 flowchart LR
-    dev["Máquina de desarrollo<br/>Node.js 20 · tsx"]
-    pgl[("PostgreSQL 16 local<br/>:5433 · pgvector<br/>base desechable")]
-    supa2["Supabase<br/>proyecto de desarrollo"]
+    dev["Máquina de desarrollo<br/>Node.js 22 · tsx"]
+    pgl[("PostgreSQL local o PGlite<br/>base desechable")]
+    aiv[("Aiven<br/>misma base que Render")]
+    ci["GitHub Actions · CI<br/>PostgreSQL 16 de servicio"]
 
-    dev -->|"psql :5433<br/>db/verify/*.sql"| pgl
-    dev -->|"HTTPS :443<br/>guiones de operación"| supa2
+    dev -->|"db/verify/*.sql"| pgl
+    dev -->|"npm run sql:aplicar · db:check<br/>TLS + CA"| aiv
+    ci -->|"sql:aplicar ×2 · db:check<br/>pruebas de integración · db/verify"| pgl
 ```
 
-Las funciones SQL se verifican por comportamiento sobre una base local que se crea y se
-destruye en cada corrida, **antes** de aplicarse en Supabase. Esa práctica nació de un
-incidente real: dos guiones que parecían correctos a la vista fallaron al ejecutarse.
+Las funciones SQL se verifican por comportamiento sobre una base que se crea y se destruye
+en cada corrida, **antes** de aplicarse en Aiven. Esa práctica nació de un incidente real:
+dos guiones que parecían correctos a la vista fallaron al ejecutarse.
 
 ---
 

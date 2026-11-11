@@ -58,7 +58,11 @@ Ese último paso es el corazón del proyecto: el trabajo avanza sin que nadie ap
 | `db/` | La base de datos: cómo se guarda todo y quién puede ver qué |
 | `docs/` | La documentación del proyecto (esta guía incluida) |
 | `scripts/` | Herramientas para probar cosas desde la terminal sin abrir el navegador |
-| `tests/` | 315 pruebas automáticas que verifican que nada se rompa |
+| `lib/db/` | La única puerta a la base de datos: consultas parametrizadas, transacciones y permisos por persona |
+| `lib/auth/` | El inicio de sesión: contraseñas con BCrypt, la cookie de sesión y qué puede hacer cada rol |
+| `sql/` | Los dos scripts que crean la base y cargan los datos de prueba (se generan desde `db/`) |
+| `k8s/` | Los archivos para correr todo en Kubernetes (minikube) |
+| `tests/` | 371 pruebas automáticas que verifican que nada se rompa, más 16 contra una base real |
 
 ## Tres ideas que explican casi todo
 
@@ -80,30 +84,41 @@ porque nada avisa.
 
 ## Cómo verlo funcionando
 
-En internet, sin instalar nada: **https://proyecto-vektora.vercel.app**
+En internet, sin instalar nada: **https://vektora.onrender.com** (la primera vez puede
+tardar casi un minuto: el plan gratis de Render «duerme» el servicio cuando nadie lo usa).
+Se entra con `cliente@vektora.test` y la contraseña de prueba `Demo-Vektora-2026`.
 
-Desde la computadora, dentro de la carpeta del proyecto:
+Desde la computadora, con Docker Desktop instalado, dentro de la carpeta del proyecto:
 
 ```
-npm run dev     # abre la aplicación en http://localhost:3000
-npm run cron    # empuja al sistema a trabajar (adjudicar y evaluar)
+docker compose up --build -d   # levanta la base y la aplicación en http://localhost:3000
+npm run cron                    # empuja al sistema a trabajar (adjudicar y evaluar)
 ```
 
-`npm run cron` existe por una razón: en el servidor hay un reloj que dispara esas dos
-acciones solo, cada día. En una computadora de desarrollo no hay reloj, así que se le da
-cuerda a mano. Es el mismo código, solo que ejecutado por nosotros en vez de por el reloj.
+`npm run cron` existe por una razón: en internet hay un reloj (GitHub Actions) que dispara
+esas dos acciones solo, cada 10 y 15 minutos. En una computadora no hay reloj, así que se le
+da cuerda a mano. Es el mismo código, solo que ejecutado por nosotros en vez de por el reloj.
+
+La guía completa, paso a paso, está en [`guia-despliegue.md`](guia-despliegue.md).
 
 ## Lo que conviene saber para defender el proyecto
 
-- **315 pruebas automáticas** pasan en verde, más comprobaciones directas sobre la base de
-  datos.
-- **Todo corre en servicios gratuitos**: Supabase guarda los datos, Vercel sirve la web,
-  Groq y Google proveen la inteligencia artificial.
+- **371 pruebas automáticas** pasan en verde, más 16 contra una base de datos real y
+  comprobaciones directas del SQL. GitHub las corre solo en cada cambio.
+- **Todo corre en servicios gratuitos**: Aiven guarda los datos (PostgreSQL), Render sirve la
+  web con HTTPS, GitHub guarda el código, la imagen Docker y hace de reloj, y Groq y Google
+  proveen la inteligencia artificial.
+- **Las contraseñas se guardan con BCrypt**, nunca en texto, y las consultas a la base son
+  siempre parametrizadas: no se puede inyectar SQL.
+- **La seguridad se revisó con cinco herramientas** (dependencias, código, imagen Docker, la
+  web desplegada y secretos en el historial). Lo que encontraron y cómo se corrigió está en
+  [`informe-seguridad.md`](informe-seguridad.md).
 - **Los números del sistema están medidos, no inventados.** Los umbrales que deciden si se
   adjudica una tarea salieron de medir casos reales, y está documentado de dónde sale cada
   uno.
-- **La documentación completa está en `docs/`**, del 01 al 09: teoría, requisitos, diagramas
-  de clases, casos de uso, infraestructura y despliegue.
+- **La documentación completa está en `docs/`**: teoría, requisitos, stack, diagramas de
+  clases, casos de uso e infraestructura (01 a 07), la guía de despliegue, el informe de
+  seguridad, los diagramas (`docs/diagramas/`) y la guía para la defensa (`defensa.md`).
 
 ---
 

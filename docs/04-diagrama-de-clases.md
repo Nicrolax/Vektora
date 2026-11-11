@@ -13,72 +13,95 @@ El sistema se organiza en cuatro capas. Cada diagrama de este documento cubre un
 
 ## 1. Capa de aplicación
 
-Los agentes autónomos se invocan desde el servidor, nunca desde el navegador: es lo que
-mantiene la clave con privilegios plenos fuera del cliente. La interfaz llama a acciones de
-servidor; los trabajos programados llaman a los mismos casos de uso sin que nadie inicie
+Los agentes y los servicios se invocan desde el servidor, nunca desde el navegador: la
+conexión a la base y las claves de IA no salen de ahí. La interfaz llama a **Server
+Actions**; GitHub Actions llama a los **route handlers** de los agentes sin que nadie inicie
 sesión, y son los que hacen que el sistema avance solo.
 
 ```mermaid
 classDiagram
     direction TB
 
-    class ProjectActions {
-        <<server actions>>
-        +createProject(objective, budget) ProjectView
-        +getProjectGraph(projectId) GraphView
-        +getTaskDetail(taskId) TaskDetailView
+    class AccionesSesion {
+        <<server actions · app/entrar>>
+        +iniciarSesion(form) Resultado
+        +registrarse(form) Resultado
+        +cerrarSesion() void
     }
 
-    class ProviderActions {
-        <<server actions>>
-        +registerProvider(input) ProviderView
-        +updateSkills(profileId, skills) SkillResolutionView
-        +getProviderDashboard(userId) DashboardView
+    class AccionesProyectos {
+        <<server actions · app/acciones/proyectos.ts>>
+        +crearProyecto(form) Resultado
+        +actualizarProyecto(form) Resultado
+        +cambiarEstadoProyecto(form) Resultado
+        +eliminarProyecto(form) Resultado
     }
 
-    class DeliverableActions {
-        <<server actions>>
-        +submitDeliverable(taskId, input) DeliverableView
-        +getVerdict(deliverableId) VerdictView
+    class AccionesTrabajo {
+        <<server actions · app/acciones>>
+        +registrarProveedor(form) Resultado
+        +entregarTrabajo(form) ResultadoEntrega
     }
 
-    class MatchingJob {
-        <<route handler>>
-        +POST(request) JobReport
-        -matchReadyTasks(limit) MatchTaskResult[]
+    class AccionesAdmin {
+        <<server actions · app/acciones/admin.ts>>
+        +gestionarCuenta(form) Resultado
+        +crearSkill(form) Resultado
+        +gestionarSkill(form) Resultado
     }
 
-    class QaJob {
-        <<route handler>>
-        +POST(request) JobReport
-        -judgePendingDeliverables(limit) JudgeResult[]
+    class RutasAgentes {
+        <<route handlers · app/api/cron>>
+        +POST emparejar(request) Informe
+        +POST evaluar(request) Informe
     }
 
-    class SessionGuard {
+    class Sesion {
+        <<lib/auth/session.ts>>
+        +getSessionUser() SessionUser
         +requireUser() SessionUser
-        +requireTaskAssignee(taskId) SessionUser
-        +requireProjectOwner(projectId) SessionUser
+        +requirePermiso(permiso) SessionUser
+        +exigirPermiso(permiso) SessionUser
+        +abrirSesion(userId) void
+        +cerrarSesionActual() void
     }
 
+    class AutorizacionCron {
+        <<lib/cron>>
+        +autorizarCron(cabeceras) ResultadoAutorizacion
+    }
+
+    class AuthService
+    class ProyectosService
+    class EntregasService
+    class AdminService
     class ProjectPlanner
     class ProviderOnboarding
     class TaskMatcher
     class QaJudge
 
-    ProjectActions ..> SessionGuard : valida sesión
-    ProviderActions ..> SessionGuard
-    DeliverableActions ..> SessionGuard
+    AccionesSesion ..> AuthService
+    AccionesSesion ..> Sesion : abre / cierra
+    AccionesProyectos ..> Sesion : exigirPermiso
+    AccionesTrabajo ..> Sesion
+    AccionesAdmin ..> Sesion
 
-    ProjectActions ..> ProjectPlanner : invoca
-    ProviderActions ..> ProviderOnboarding
-    DeliverableActions ..> QaJudge : consulta veredicto
-    MatchingJob ..> TaskMatcher : invoca
-    QaJob ..> QaJudge : invoca
+    AccionesProyectos ..> ProjectPlanner : crear
+    AccionesProyectos ..> ProyectosService : editar, estado, eliminar
+    AccionesTrabajo ..> ProviderOnboarding
+    AccionesTrabajo ..> EntregasService : transacción
+    AccionesAdmin ..> AdminService
+    RutasAgentes ..> AutorizacionCron : CRON_SECRET
+    RutasAgentes ..> TaskMatcher : emparejar
+    RutasAgentes ..> QaJudge : evaluar
 ```
 
-Las acciones de servidor y los trabajos programados son dos puertas al **mismo** núcleo. Esa
-simetría es deliberada: nada de lo que hace el sistema depende de que una persona pulse algo,
-y lo que una persona pulsa no toma un atajo distinto del que toma el sistema por su cuenta.
+Las acciones de servidor y los agentes son dos puertas al **mismo** núcleo. Esa simetría es
+deliberada: nada de lo que hace el sistema depende de que una persona pulse algo, y lo que
+una persona pulsa no toma un atajo distinto del que toma el sistema por su cuenta.
+
+Toda acción termina igual ante un error: `mensajeParaUsuario(error)` (ver
+[`diagramas/capas.md`](diagramas/capas.md), jerarquía de errores).
 
 ## 2. Núcleo de orquestación
 
@@ -89,7 +112,7 @@ estructura de tres piezas:
 
 - un **orquestador** con la lógica del caso de uso,
 - una **interfaz de repositorio** que declara qué datos necesita,
-- una **implementación Supabase** de esa interfaz.
+- una **implementación `Postgres*`** de esa interfaz, que usa `lib/db` (consultas parametrizadas).
 
 El orquestador depende de la interfaz, nunca de la implementación. Eso es lo que permite
 probar la lógica de decisión con dobles, sin red ni base de datos, que es donde el sistema
@@ -174,10 +197,10 @@ classDiagram
         +latestDeliverableForTask(taskId) string
     }
 
-    class SupabasePlannerRepository
-    class SupabaseProviderRepository
-    class SupabaseMatchingRepository
-    class SupabaseQaRepository
+    class PostgresPlannerRepository
+    class PostgresProviderRepository
+    class PostgresMatchingRepository
+    class PostgresQaRepository
 
     ProjectPlanner --> PlannerRepository : usa
     ProviderOnboarding --> ProviderRepository : usa
@@ -186,10 +209,107 @@ classDiagram
     TaskMatcher --> MatchingRepository : usa
     QaJudge --> QaRepository : usa
 
-    PlannerRepository <|.. SupabasePlannerRepository
-    ProviderRepository <|.. SupabaseProviderRepository
-    MatchingRepository <|.. SupabaseMatchingRepository
-    QaRepository <|.. SupabaseQaRepository
+    PlannerRepository <|.. PostgresPlannerRepository
+    ProviderRepository <|.. PostgresProviderRepository
+    MatchingRepository <|.. PostgresMatchingRepository
+    QaRepository <|.. PostgresQaRepository
+```
+
+### Servicios de escritura y acceso a datos
+
+Los servicios que no son agentes (login, gestión de proyectos, entrega, administración)
+siguen el mismo patrón: el servicio depende de una **interfaz** DAO y recibe la
+implementación por el constructor. Todos terminan en `Db`, la única puerta a la base.
+
+```mermaid
+classDiagram
+    direction LR
+
+    class Consultor {
+        <<interface>>
+        +query(texto, parametros) T[]
+        +one(texto, parametros) T
+        +execute(texto, parametros) number
+    }
+    class Db {
+        <<interface>>
+        +transaction(fn) T
+        +asUser(userId, fn) T
+        +ping(timeoutMs) boolean
+        +usaSsl() boolean
+        +close() void
+    }
+    Consultor <|-- Db
+
+    class AuthService {
+        -CuentasRepository cuentas
+        -number coste
+        +iniciarSesion(email, contrasena) UsuarioAutenticado
+        +registrar(datos) UsuarioAutenticado
+        +asegurarAdmin(email, contrasena) Resultado
+    }
+    class CuentasRepository {
+        <<interface>>
+        +buscarConHashPorCorreo(email) CuentaConHash
+        +buscarPorId(id) Cuenta
+        +crear(cuenta) string
+        +cambiarHash(id, hash) void
+        +cambiarRol(id, rol) void
+        +registrarAcceso(id) void
+    }
+    class PostgresCuentasRepository
+
+    class ProyectosService {
+        -Db db
+        -ProyectosDao dao
+        +actualizar(userId, projectId, cambios) void
+        +cambiarEstado(userId, projectId, accion) ProjectStatus
+        +eliminar(userId, projectId) void
+    }
+    class ProyectosDao {
+        <<interface>>
+        +actualizar(tx, id, cambios) number
+        +cambiarEstado(tx, id, desde, hacia) number
+        +existe(tx, id) boolean
+        +eliminar(tx, id) number
+    }
+    class PostgresProyectosDao
+
+    class EntregasService {
+        -Db db
+        -EntregasRepository repo
+        +entregar(providerId, entrega) EntregaRegistrada
+    }
+    class EntregasRepository {
+        <<interface>>
+        +bloquearTarea(tx, taskId) TareaBloqueada
+        +insertarEntregable(tx, providerId, entrega) Entregable
+        +marcarEntregada(tx, taskId) number
+        +registrarAuditoria(tx, datos) void
+    }
+    class PostgresEntregasRepository
+
+    class AdminService {
+        -Db db
+        +listarCuentas(adminId, texto) CuentaAdmin[]
+        +cambiarRol(adminId, cuentaId, rol) void
+        +cambiarEstado(adminId, cuentaId, estado) void
+        +eliminarCuenta(adminId, cuentaId) void
+        +listarSkills(adminId) SkillAdmin[]
+        +crearSkill(adminId, datos) string
+        +eliminarSkill(adminId, skillId) void
+    }
+
+    AuthService --> CuentasRepository
+    CuentasRepository <|.. PostgresCuentasRepository
+    ProyectosService --> ProyectosDao
+    ProyectosDao <|.. PostgresProyectosDao
+    EntregasService --> EntregasRepository
+    EntregasRepository <|.. PostgresEntregasRepository
+    PostgresCuentasRepository --> Consultor
+    ProyectosService --> Db : asUser (RLS)
+    EntregasService --> Db : transaction (R7)
+    AdminService --> Db : asUser (RLS)
 ```
 
 ## 3. Capa de abstracción de IA
@@ -240,7 +360,7 @@ classDiagram
     class GroqProvider
     class GeminiProvider
     class GeminiEmbeddingProvider
-    class SupabaseTelemetrySink
+    class PostgresTelemetrySink
     class InMemoryTelemetrySink
     class NullTelemetrySink
 
@@ -258,7 +378,7 @@ classDiagram
     LlmProvider <|.. GroqProvider
     LlmProvider <|.. GeminiProvider
     EmbeddingProvider <|.. GeminiEmbeddingProvider
-    TelemetrySink <|.. SupabaseTelemetrySink
+    TelemetrySink <|.. PostgresTelemetrySink
     TelemetrySink <|.. InMemoryTelemetrySink
     TelemetrySink <|.. NullTelemetrySink
     AiError <|-- AiExhaustedError

@@ -37,7 +37,7 @@ del que el sistema no salga solo?
 ## Stack
 
 - Next.js 16 (App Router, Server Actions, TypeScript estricto)
-- Tailwind CSS, shadcn/ui, Lucide
+- Tailwind CSS con primitivas propias (`components/ui/primitivas.tsx`, `app/globals.css`); sin librería de componentes ni de íconos
 - PostgreSQL 16 + pgvector con `pg` (antes Supabase): RLS estricto vía `asUser`, login propio
   con BCrypt + cookie JWT HS256, sondeo cada 15 s en vez de Realtime
 - Despliegue: Docker + compose (Nivel 1), Aiven + Render (Nivel 2), minikube (Nivel 3)
@@ -220,7 +220,7 @@ Los umbrales son **medidos, no puestos a ojo**. No cambiarlos sin volver a medir
 
 ## Git
 
-- Remoto: `https://github.com/Nicrolax/PROYECTO_VEKTORA.git`.
+- Remoto: `https://github.com/Nicrolax/_JBDPA_Grupo_1.git` (rama `main`).
 - Commits solo cuando se pidan. Después de cada commit, **verificar leyendo de vuelta** con
   `git show` / `git diff` que el contenido es el esperado: ya hubo commits que «reportaron
   éxito» con contenido obsoleto.
@@ -232,8 +232,8 @@ Los umbrales son **medidos, no puestos a ojo**. No cambiarlos sin volver a medir
   documentación técnica, repositorio accesible al docente, análisis estático y prueba en vivo.
   Sin fecha fija: se presenta cuando el producto esté terminado.
 - Presentación en **URUCON Juniors 2026** (jornada de pósters, material en español).
-- Documentación evaluable en `docs/` (`07-repositorio-y-auditoria.md`, `09-despliegue.md`).
-  **Borrar `docs/08-estado-de-implementacion.md` antes de entregar** (nota interna).
+- Documentación evaluable en `docs/` (índice en `00-indice.md`): 01–07, `guia-despliegue.md`,
+  `informe-seguridad.md`, `diagramas/` y `defensa.md`.
 
 ### Examen de despliegue
 
