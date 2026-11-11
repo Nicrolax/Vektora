@@ -92,6 +92,8 @@ jobs:
             create extension if not exists citext with schema extensions;
           SQL
 
+      # Cada comando guarda su salida; si falla, la publica como anotación `::error::` (las
+      # anotaciones se ven sin iniciar sesión en GitHub, los registros completos no).
       - name: Aplicar sql/ dos veces (idempotencia) y comprobar
         env:
           DB_HOST: localhost
@@ -101,10 +103,21 @@ jobs:
           DB_PASSWORD: vektora_app
           DB_SSL: disable
         run: |
-          npm run sql:aplicar
-          npm run sql:aplicar
-          npm run db:check
-          test "$(psql -d vektora -tAc 'select count(*) from public.project_tasks')" = "8"
+          correr() {
+            local titulo="$1"; shift
+            if ! "$@" > salida.txt 2>&1; then
+              cat salida.txt
+              echo "::error title=${titulo}::$(tail -c 1500 salida.txt | tr '
+' ' ' | tr -d '')"
+              exit 1
+            fi
+            cat salida.txt
+          }
+          correr 'sql:aplicar (1ra vez)' npm run sql:aplicar
+          correr 'sql:aplicar (2da vez)' npm run sql:aplicar
+          correr 'db:check' npm run db:check
+          tareas="$(psql -d vektora -tAc 'select count(*) from public.project_tasks')"
+          if [ "$tareas" != "8" ]; then echo "::error title=datos de prueba::se esperaban 8 tareas y hay $tareas"; exit 1; fi
 
       - name: Pruebas de integración contra la base
         env:
@@ -115,4 +128,11 @@ jobs:
           DB_USER: vektora_app
           DB_PASSWORD: vektora_app
           DB_SSL: disable
-        run: npm run test:integracion
+        run: |
+          if ! npm run test:integracion > salida.txt 2>&1; then
+            cat salida.txt
+            echo "::error title=pruebas de integración::$(grep -E 'FAIL|Error|expected|×' salida.txt | head -20 | tr '
+' ' ')"
+            exit 1
+          fi
+          cat salida.txt
