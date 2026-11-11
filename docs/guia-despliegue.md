@@ -156,6 +156,8 @@ descargan sin credenciales.
 docker pull ghcr.io/nicrolax/vektora:latest
 ```
 
+![Captura 4: el paquete vektora en ghcr.io, público, con las etiquetas latest y sha-…](capturas/04-ghcr-paquete.png)
+
 📷 **Captura 4** — la página del paquete en GitHub con las etiquetas `latest` y `sha-…`.
 
 ### 1.8 Apagar y empezar de cero
@@ -316,6 +318,8 @@ Entrar con `cliente@vektora.test` / `Demo-Vektora-2026`. Como Render manda
 `x-forwarded-proto: https`, la cookie de sesión sale con `Secure` además de `HttpOnly` y
 `SameSite=Lax` (en el navegador: herramientas de desarrollo → Application → Cookies →
 `vektora_sesion`).
+
+![Captura 6: la app en https://vektora.onrender.com con el candado de HTTPS](capturas/06-render-https.png)
 
 📷 **Captura 6** — la app en `https://vektora.onrender.com` con el candado de HTTPS visible.
 

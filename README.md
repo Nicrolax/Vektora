@@ -12,10 +12,12 @@ pgvector, todo en servicios gratuitos.
 | Entorno | Base | App |
 |---|---|---|
 | Local (Nivel 1) | contenedor `pgvector/pgvector:pg16` | `docker compose up` |
-| Nube (Nivel 2) | **Aiven** PostgreSQL, conexión **SSL** | **Render** (Docker), **HTTPS** |
+| Nube (Nivel 2) | **Aiven** PostgreSQL, conexión **SSL** | **Render** (Docker), **HTTPS**: <https://vektora.onrender.com> |
 | Taller (Nivel 3) | Deployment + PVC en **minikube** | Deployment + Service en minikube |
 
-Guía paso a paso: [`docs/guia-despliegue.md`](docs/guia-despliegue.md).
+Guía paso a paso: [`docs/guia-despliegue.md`](docs/guia-despliegue.md) · Seguridad:
+[`docs/informe-seguridad.md`](docs/informe-seguridad.md) · Diagramas:
+[`docs/diagramas/`](docs/diagramas/) · Defensa: [`docs/defensa.md`](docs/defensa.md).
 
 ---
 
@@ -78,8 +80,8 @@ scripts/      CLIs: sql:aplicar, db:check, cuenta:admin, el ciclo autónomo…
 tests/        Vitest: unitarias y tests/integracion (contra PostgreSQL real)
 Dockerfile · docker-compose.yml · .env.example
 k8s/          manifiestos de Kubernetes (Nivel 3, fase 4 del examen)
-docs/         guía de despliegue (y, en las fases 5 y 6, informe de seguridad y diagramas)
-.github/      CI, imagen en ghcr.io
+docs/         guía de despliegue, informe de seguridad, diagramas, defensa y documentos 01–11
+.github/      CI, imagen en ghcr.io, agentes, Kubernetes (kind), seguridad, CodeQL, ZAP, Dependabot
 ```
 
 ## La base de datos
@@ -91,7 +93,7 @@ hecho lo crea `db/00_plataforma.sql`: el esquema `auth` con `auth.users.password
 - **Dos identidades.** La app se conecta como el dueño de las tablas: así operan los agentes
   autónomos, el login y la telemetría. Para leer como una persona, `getDb().asUser(id, …)`
   abre una transacción con `SET LOCAL ROLE authenticated` y fija `request.jwt.claim.sub`:
-  `auth.uid()` vale ese id y las 48 políticas RLS se aplican igual que antes.
+  `auth.uid()` vale ese id y las 47 políticas RLS se aplican igual que antes.
 - **Orden de los scripts.** `00_plataforma → schema → 0002 … 0005, 0007 → seeds/01_skills →
   seeds/02_datos_demo`. Ya están concatenados en `sql/` (`npm run sql:build`; `sql:check`
   falla en CI si alguien los editó a mano). Todos son idempotentes.
@@ -360,8 +362,11 @@ Todas están en [`.env.example`](.env.example), solo con los nombres. Las obliga
 
 ## Documentación
 
-- [`docs/guia-despliegue.md`](docs/guia-despliegue.md) — Docker, Aiven, Render y minikube, paso a paso.
-- [`docs/00-indice.md`](docs/00-indice.md) — desarrollo teórico, requisitos, stack, diagramas y casos de uso.
+- [`docs/guia-despliegue.md`](docs/guia-despliegue.md) — Docker, Aiven, Render y minikube, paso a paso, con las capturas.
+- [`docs/informe-seguridad.md`](docs/informe-seguridad.md) — SCA, SAST, Trivy, ZAP y gitleaks: hallazgos, correcciones y hardening.
+- [`docs/diagramas/`](docs/diagramas/) — arquitectura, modelo de datos (ER), capas y flujo de despliegue.
+- [`docs/defensa.md`](docs/defensa.md) — guion de la demo, R1–R12 con archivo y línea, preguntas probables.
+- [`docs/00-indice.md`](docs/00-indice.md) — desarrollo teórico, requisitos, stack, diagrama de clases, casos de uso e infraestructura.
 
 La documentación técnica de cada fase —decisiones de diseño, errores encontrados y cómo se
 corrigieron— vive en el espacio de trabajo del proyecto.
