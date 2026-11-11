@@ -1,0 +1,18 @@
+# VEKTORA — Service de la base (Nivel 3).
+# ClusterIP: la base SOLO es alcanzable desde dentro del clúster, con el nombre `vektora-db`.
+# No se expone afuera: nadie fuera del clúster puede conectarse a PostgreSQL.
+apiVersion: v1
+kind: Service
+metadata:
+  name: vektora-db
+  labels:
+    app.kubernetes.io/name: vektora-db
+    app.kubernetes.io/part-of: vektora
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: vektora-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

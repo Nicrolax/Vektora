@@ -1,0 +1,13 @@
+# VEKTORA — Todo el Nivel 3 de una vez:  kubectl apply -k k8s/
+#
+# Antes hay que crear el Secret (vektora-secret) y el ConfigMap con los scripts de sql/
+# (vektora-sql): no están acá a propósito, el primero por tener secretos y el segundo porque
+# sql/ está fuera de esta carpeta. Ver k8s/LEEME.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - configmap.yaml
+  - db-deployment.yaml
+  - db-service.yaml
+  - app-deployment.yaml
+  - app-service.yaml

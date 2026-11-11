@@ -1,0 +1,82 @@
+# VEKTORA — Deployment de la aplicación (Nivel 3).
+# Imagen publicada por el workflow «Imagen» en ghcr.io (pública: se descarga sin credenciales).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vektora-app
+  labels:
+    app.kubernetes.io/name: vektora-app
+    app.kubernetes.io/part-of: vektora
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vektora-app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vektora-app
+        app.kubernetes.io/part-of: vektora
+    spec:
+      # Contenedor NO root: la imagen corre como el usuario `vektora` (uid 1001).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: ghcr.io/nicrolax/vektora:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          # Configuración del ConfigMap + secretos del Secret, como variables de entorno.
+          envFrom:
+            - configMapRef:
+                name: vektora-config
+            - secretRef:
+                name: vektora-secret
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          # ¿Puede recibir tráfico? /health da 200 solo si la app Y la base responden.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # ¿Está viva? Si /health falla 6 veces seguidas (1 min), Kubernetes la reinicia.
+          # Más tolerante que la readiness: una caída breve de la base no debe reiniciar la app.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # Con el sistema de archivos en solo lectura, Next solo necesita estos dos lugares.
+          volumeMounts:
+            - name: cache-next
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: cache-next
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

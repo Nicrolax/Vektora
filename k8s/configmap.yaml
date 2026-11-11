@@ -1,0 +1,25 @@
+# VEKTORA — Configuración NO secreta (Nivel 3).
+# Lo que no es secreto va acá; contraseñas y claves van en el Secret (secret.yaml.example).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vektora-config
+  labels:
+    app.kubernetes.io/part-of: vektora
+data:
+  # --- Conexión de la app a la base del clúster (R10) ---
+  # `vektora-db` es el Service de la base: Kubernetes lo resuelve por DNS dentro del clúster.
+  DB_HOST: vektora-db
+  DB_PORT: "5432"
+  DB_NAME: vektora
+  # Tráfico dentro del clúster: la base no tiene certificado. Hacia Aiven (Render) va con SSL.
+  DB_SSL: disable
+  DB_POOL_MAX: "5"
+  # --- Base de datos (lo lee la imagen de PostgreSQL al crearse) ---
+  POSTGRES_DB: vektora
+  # --- App ---
+  PORT: "3000"
+  HOSTNAME: 0.0.0.0
+  NODE_ENV: production
+  # Se entra por http://<ip-de-minikube>: una cookie `Secure` el navegador la descartaría.
+  COOKIE_SECURE: "false"

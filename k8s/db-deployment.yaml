@@ -1,0 +1,96 @@
+# VEKTORA — Base de datos dentro del clúster (Nivel 3).
+#
+# PostgreSQL 16 + pgvector con un volumen persistente. La primera vez que arranca con el
+# volumen VACÍO ejecuta los scripts de `sql/` (montados desde el ConfigMap `vektora-sql`):
+# crea las tablas y carga los datos de prueba, igual que en docker compose.
+#
+# Decisión: la base corre DENTRO del clúster para que el taller sea autónomo (no depende de
+# internet ni de Aiven). En Render, la app usa Aiven; el código es el mismo, cambian las
+# variables de entorno.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vektora-db-datos
+  labels:
+    app.kubernetes.io/part-of: vektora
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vektora-db
+  labels:
+    app.kubernetes.io/name: vektora-db
+    app.kubernetes.io/part-of: vektora
+spec:
+  replicas: 1
+  # Recreate: el volumen es ReadWriteOnce; dos pods de base a la vez no pueden montarlo.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vektora-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vektora-db
+        app.kubernetes.io/part-of: vektora
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef: { name: vektora-config, key: POSTGRES_DB }
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: { name: vektora-secret, key: POSTGRES_USER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: vektora-secret, key: POSTGRES_PASSWORD }
+            # Subcarpeta: la raíz de un volumen trae `lost+found` y initdb se niega a usarla.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          # ¿Acepta conexiones? (exec: no hay HTTP en una base de datos)
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 6
+          # ¿Sigue viva? Margen amplio: la primera carga de sql/ tarda unos segundos.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: datos
+              mountPath: /var/lib/postgresql/data
+            - name: sql
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: datos
+          persistentVolumeClaim:
+            claimName: vektora-db-datos
+        # Los scripts de sql/ (se crea con kubectl create configmap, ver k8s/LEEME.md).
+        - name: sql
+          configMap:
+            name: vektora-sql

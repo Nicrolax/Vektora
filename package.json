@@ -32,7 +32,8 @@
     "cuenta:admin": "tsx scripts/cuenta-admin.ts",
     "test:integracion": "vitest run tests/integracion",
     "db:configurar": "tsx scripts/configurar-db.ts",
-    "render:env": "tsx scripts/render-env.ts"
+    "render:env": "tsx scripts/render-env.ts",
+    "k8s:secreto": "tsx scripts/k8s-secreto.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

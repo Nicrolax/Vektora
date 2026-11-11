@@ -1,0 +1,63 @@
+# VEKTORA — Prueba de los manifiestos de Kubernetes en un clúster real (Nivel 3).
+#
+# Levanta un clúster `kind` (Kubernetes dentro de Docker, gratis en el runner), aplica k8s/
+# exactamente como dice k8s/LEEME.md y comprueba que la base y la app queden Running y
+# sanas, que la base tenga los datos de prueba y que /health responda 200 por el Service.
+# Es la misma evidencia que se pide con minikube, automatizada en cada cambio de k8s/.
+name: Kubernetes
+
+on:
+  push:
+    branches: [main]
+    paths: ['k8s/**', 'sql/**', '.github/workflows/k8s.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: vektora
+
+      - name: Secret, scripts SQL y manifiestos
+        run: |
+          npm run k8s:secreto
+          kubectl apply -f k8s/secret.yaml
+          kubectl create configmap vektora-sql --from-file=sql/
+          kubectl apply -k k8s/
+
+      - name: Esperar a que todo esté Running y sano
+        run: |
+          kubectl rollout status deployment/vektora-db --timeout=240s
+          kubectl rollout status deployment/vektora-app --timeout=300s
+          kubectl get pods,svc,pvc -o wide
+
+      - name: Comprobar datos y /health
+        run: |
+          tareas="$(kubectl exec deploy/vektora-db -- psql -U vektora -d vektora -tAc 'select count(*) from public.project_tasks')"
+          echo "tareas: $tareas"
+          test "$tareas" = "8"
+          kubectl port-forward service/vektora-app 3000:3000 > /dev/null 2>&1 &
+          sleep 5
+          curl -fsS http://127.0.0.1:3000/health | tee /dev/stderr | grep -q '"estado":"ok"'
+          test "$(kubectl exec deploy/vektora-app -- id -u)" = "1001"
+
+      - name: Diagnóstico si algo falló
+        if: failure()
+        run: |
+          kubectl get pods,svc,pvc,events -o wide
+          kubectl describe pods
+          kubectl logs deploy/vektora-db --tail=80 || true
+          kubectl logs deploy/vektora-app --tail=80 || true
