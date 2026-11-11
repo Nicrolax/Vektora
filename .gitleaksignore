@@ -1,0 +1,12 @@
+# gitleaks — hallazgos revisados a mano y descartados (falsos positivos).
+#
+# Los tres son la línea de ejemplo de `npm run cuenta:admin` en README.md y en la guía,
+# donde el valor de ADMIN_PASSWORD era el texto «al menos 12 caracteres» unido con
+# guiones: una instrucción de qué poner, no una contraseña. La regla generic-api-key lo
+# marca por la forma PASSWORD='texto-largo'. Desde el commit
+# que agrega este archivo el ejemplo dice '<12+ caracteres>'; estas huellas solo cubren
+# los commits viejos, que no se reescriben (el historial de main es público).
+# Ver docs/informe-seguridad.md, sección gitleaks.
+c77d919c605e9a720e08d6d2b004e661ffc1e60f:docs/guia-despliegue.md:generic-api-key:246
+39c425186210334b9c842cb9de359234c6bd6024:docs/guia-despliegue.md:generic-api-key:137
+c132ccf77eac73deb08704ef3bfecf9afd83ca71:README.md:generic-api-key:43

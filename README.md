@@ -40,7 +40,7 @@ Abrir <http://localhost:3000> y entrar con una cuenta de prueba (contraseña **p
 La cuenta **admin** no está en los datos (su contraseña no puede ser pública). Se crea así:
 
 ```bash
-ADMIN_EMAIL=admin@ejemplo.com ADMIN_PASSWORD='al-menos-12-caracteres' npm run cuenta:admin
+ADMIN_EMAIL=admin@ejemplo.com ADMIN_PASSWORD='<12+ caracteres>' npm run cuenta:admin
 ```
 
 Sin Docker: `npm ci`, un PostgreSQL 16 con pgvector, los `DB_*` en `.env`,

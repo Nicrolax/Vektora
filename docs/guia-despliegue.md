@@ -134,7 +134,7 @@ la PC (`npm ci` una vez), apuntando al puerto que el compose publica en `127.0.0
 
 ```bash
 DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=vektora DB_USER=vektora DB_PASSWORD='<la del .env>' DB_SSL=disable \
-ADMIN_EMAIL=admin@ejemplo.com ADMIN_PASSWORD='al-menos-12-caracteres' npm run cuenta:admin
+ADMIN_EMAIL=admin@ejemplo.com ADMIN_PASSWORD='<12+ caracteres>' npm run cuenta:admin
 ```
 
 ### 1.7 Imagen en GitHub Container Registry (ghcr.io)
@@ -243,7 +243,7 @@ para eso (crea los roles y se los asigna a sí mismo; `service_role` se crea sin
 Crear la cuenta de administración en esta base:
 
 ```bash
-ADMIN_EMAIL=admin@ejemplo.com ADMIN_PASSWORD='al-menos-12-caracteres' npm run cuenta:admin
+ADMIN_EMAIL=admin@ejemplo.com ADMIN_PASSWORD='<12+ caracteres>' npm run cuenta:admin
 ```
 
 ### 2.4 Evidencia: un dato creado desde la app y leído con SELECT en Aiven
