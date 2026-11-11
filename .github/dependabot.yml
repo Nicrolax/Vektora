@@ -12,6 +12,11 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: 'npm'
+    ignore:
+      # Los tipos de Node siguen a la versión que corre en la imagen (node:22-alpine).
+      # Subir a @types/node 24+ describiría APIs que en producción no existen.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       produccion:
         dependency-type: production
