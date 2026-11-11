@@ -1,0 +1,42 @@
+# VEKTORA — SCA continuo (Fase 5). Dependabot revisa cada semana las dependencias de npm,
+# las acciones de los workflows y la imagen base del Dockerfile, y abre un PR por cada
+# actualización. Las de npm se agrupan para no llenar el repo de PRs sueltos.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/Montevideo
+    open-pull-requests-limit: 5
+    labels: [dependencias]
+    commit-message:
+      prefix: 'npm'
+    groups:
+      produccion:
+        dependency-type: production
+        update-types: [minor, patch]
+      desarrollo:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/Montevideo
+    labels: [dependencias]
+    commit-message:
+      prefix: 'actions'
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/Montevideo
+    labels: [dependencias]
+    commit-message:
+      prefix: 'docker'

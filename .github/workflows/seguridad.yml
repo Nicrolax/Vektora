@@ -1,0 +1,125 @@
+# VEKTORA — Análisis de seguridad automatizados (Fase 5, SSDLC).
+#
+#   secretos      gitleaks sobre TODO el historial de Git: ninguna contraseña ni clave subida
+#   dependencias  npm audit (SCA): falla si hay vulnerabilidades altas o críticas
+#   imagen        Trivy sobre la imagen publicada en ghcr.io (SO + paquetes de Node)
+#
+# Corre en cada push a main, todos los lunes (aparecen CVE nuevos aunque el código no
+# cambie) y a mano. Cada job deja su resultado en el resumen de la ejecución y como
+# artefacto. El informe con los hallazgos y las correcciones: docs/informe-seguridad.md.
+name: Seguridad
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 11 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secretos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # todo el historial, no solo el último commit
+
+      - name: gitleaks (todo el historial)
+        run: |
+          curl -fsSL -o gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          set +e
+          ./gitleaks detect --source . --redact --report-format json --report-path gitleaks.json --verbose
+          codigo=$?
+          set -e
+          commits="$(git rev-list --count HEAD)"
+          hallazgos="$(jq length gitleaks.json)"
+          {
+            echo "## gitleaks"
+            echo "Commits revisados: **$commits** · Hallazgos: **$hallazgos**"
+            if [ "$hallazgos" != "0" ]; then
+              echo
+              echo "| Regla | Archivo | Commit |"
+              echo "|---|---|---|"
+              jq -r '.[] | "| \(.RuleID) | \(.File) | \(.Commit[0:7]) |"' gitleaks.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$codigo"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gitleaks
+          path: gitleaks.json
+          if-no-files-found: ignore
+
+  dependencias:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+
+      - name: npm audit
+        run: |
+          set +e
+          npm audit > npm-audit.txt
+          npm audit --json > npm-audit.json
+          set -e
+          {
+            echo "## npm audit"
+            echo
+            jq -r '.metadata.vulnerabilities | "Críticas: **\(.critical)** · Altas: **\(.high)** · Moderadas: **\(.moderate)** · Bajas: **\(.low)**"' npm-audit.json
+            echo
+            echo '```'
+            tail -n 40 npm-audit.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          npm audit --audit-level=high
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: npm-audit
+          path: npm-audit.*
+
+  imagen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Nombre de la imagen
+        id: nombre
+        run: echo "imagen=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/vektora:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy (tabla para el informe)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.nombre.outputs.imagen }}
+          format: table
+          output: trivy.txt
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: '0'
+
+      - name: Resumen
+        run: |
+          {
+            echo "## Trivy — ${{ steps.nombre.outputs.imagen }}"
+            echo
+            echo '```'
+            cat trivy.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trivy
+          path: trivy.txt

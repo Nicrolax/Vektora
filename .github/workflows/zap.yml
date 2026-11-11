@@ -1,0 +1,51 @@
+# VEKTORA — DAST con OWASP ZAP (Fase 5).
+#
+# Escaneo «baseline» (pasivo: navega el sitio y analiza las respuestas, no ataca) contra
+# NUESTRA URL de Render y solo contra ella. La dirección está fija a propósito: escanear
+# sitios ajenos está prohibido, así que no hay ningún campo para cambiarla.
+#
+# Solo a mano (Actions → ZAP → Run workflow): el plan gratis de Render apaga el servicio
+# cuando no se usa y no tiene sentido despertarlo cada semana.
+name: ZAP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  OBJETIVO: https://vektora.onrender.com
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Despertar el servicio de Render
+        run: curl -fsS --retry 10 --retry-delay 10 --retry-all-errors -m 60 "$OBJETIVO/health"
+
+      - name: ZAP baseline
+        run: |
+          mkdir -p zap && chmod 777 zap
+          set +e
+          docker run --rm -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t "$OBJETIVO" -m 3 -j -r zap.html -J zap.json -w zap.md -I
+          codigo=$?
+          set -e
+          {
+            echo "## OWASP ZAP baseline — $OBJETIVO"
+            echo
+            jq -r '[.site[].alerts[]] | group_by(.riskdesc) | map("\(.[0].riskdesc): \(length)") | .[]' zap/zap.json
+            echo
+            echo "| Riesgo | Alerta | Instancias |"
+            echo "|---|---|---|"
+            jq -r '.site[].alerts[] | "| \(.riskdesc) | \(.name) (\(.pluginid)) | \(.count) |"' zap/zap.json
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$codigo"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap
+          path: zap/
