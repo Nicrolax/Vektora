@@ -1,0 +1,76 @@
+# VEKTORA — Reloj de los agentes autónomos (en producción, Render).
+#
+# El plan gratis de Render no tiene cron jobs, y sin un reloj el sistema solo avanza cuando
+# alguien ejecuta algo, que es intervención humana disfrazada. GitHub Actions hace de reloj:
+# cada tanto llama por HTTPS a los dos disparadores de la app, autenticado con CRON_SECRET.
+#
+#   · emparejar — cada 15 min: busca proveedor para las tareas listas.
+#   · evaluar   — cada 10 min: el juez de IA revisa las entregas pendientes.
+#
+# GitHub no garantiza la puntualidad de `schedule` (puede atrasarse minutos), y cada
+# disparo despierta a Render si estaba dormido (~1 min): por eso el timeout es largo y hay
+# reintentos. `workflow_dispatch` permite dispararlo a mano en la defensa (Actions → Agentes
+# → Run workflow).
+#
+# Necesita en GitHub → Settings → Secrets and variables → Actions:
+#   · secreto  CRON_SECRET — el mismo valor que en Render
+#   · variable APP_URL     — https://<servicio>.onrender.com (sin barra al final)
+# Sin ellos el workflow termina avisando, sin fallar: no hay app desplegada todavía.
+name: Agentes
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # emparejar
+    - cron: '5-59/10 * * * *' # evaluar (desfasado para no pisarse con emparejar)
+  workflow_dispatch:
+    inputs:
+      trabajo:
+        description: 'Qué disparar'
+        type: choice
+        options: [ambos, emparejar, evaluar]
+        default: ambos
+
+permissions: {}
+
+concurrency:
+  group: agentes
+  cancel-in-progress: false
+
+jobs:
+  disparar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APP_URL: ${{ vars.APP_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Elegir el trabajo
+        id: cual
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "trabajo=${{ inputs.trabajo }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "*/15 * * * *" ]; then
+            echo "trabajo=emparejar" >> "$GITHUB_OUTPUT"
+          else
+            echo "trabajo=evaluar" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Disparar
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::notice title=Agentes::Faltan la variable APP_URL o el secreto CRON_SECRET; no se dispara nada."
+            exit 0
+          fi
+          llamar() {
+            echo "▸ $1"
+            # --retry: si Render estaba dormido, la primera respuesta puede ser un 502/503.
+            curl -fsS --max-time 240 --retry 3 --retry-delay 20 --retry-all-errors \
+              -X POST -H "authorization: Bearer ${CRON_SECRET}" \
+              "${APP_URL%/}/api/cron/$1"
+            echo
+          }
+          case "${{ steps.cual.outputs.trabajo }}" in
+            emparejar) llamar emparejar ;;
+            evaluar)   llamar evaluar ;;
+            *)         llamar emparejar; llamar evaluar ;;
+          esac

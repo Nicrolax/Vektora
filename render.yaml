@@ -1,0 +1,56 @@
+# =====================================================================================
+# VEKTORA — Blueprint de Render (Nivel 2, parte app)
+# =====================================================================================
+# Render lee este archivo con «New → Blueprint» y crea el servicio web a partir del
+# Dockerfile del repo, en el plan GRATUITO (sin tarjeta), con HTTPS automático en
+# https://<nombre>.onrender.com.
+#
+# Los valores secretos NO están acá: llevan `sync: false`, así que Render los pide en el
+# panel al crear el servicio. `npm run render:env` arma un archivo local `.env.render`
+# (ignorado por Git) con todos para pegarlos de una vez en «Add from .env».
+#
+# Límites del plan gratis: se duerme tras 15 min sin tráfico y tarda ~1 min en despertar
+# (abrir la URL un rato antes de la defensa); 750 h por mes alcanzan para un servicio.
+# =====================================================================================
+
+services:
+  - type: web
+    name: vektora
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Render no manda tráfico a una versión nueva hasta que /health responde 200
+    # (app viva + base respondiendo).
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # --- Conexión a Aiven (R10). Siempre por SSL verificando el CA. ---
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_SSL_CA
+        sync: false
+      - key: DB_SSL
+        value: require
+      # El plan Free de Aiven admite 20 conexiones: 5 por instancia deja margen.
+      - key: DB_POOL_MAX
+        value: "5"
+      # --- Sesión y agentes ---
+      - key: AUTH_SECRET
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      # --- IA (opcional: sin claves la demo funciona, pero no se crean proyectos) ---
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GOOGLE_AI_API_KEY
+        sync: false
