@@ -7,7 +7,7 @@ ayuda: cada paso dice qué hacer, qué se tiene que ver y qué hacer si no se ve
 | Nivel | Qué se despliega | Dónde | Estado |
 |---|---|---|---|
 | 1 | App + base en contenedores; imagen en ghcr.io | Tu PC con Docker | ✅ esta guía |
-| 2 | Base en **Aiven** (SSL) + app en **Render** (HTTPS) | Nube | ✅ base · Render: próxima fase |
+| 2 | Base en **Aiven** (SSL) + app en **Render** (HTTPS) | Nube | ✅ esta guía |
 | 3 | App + base en **Kubernetes** | minikube en tu PC | próxima fase |
 
 > **Credenciales.** Ningún archivo del repositorio tiene contraseñas. Los valores reales van
@@ -276,8 +276,81 @@ desde la app.
 
 ## 3. Nivel 2 — App en Render (HTTPS)
 
-*Próxima fase del examen:* la app en Render desde el `Dockerfile`, con las mismas variables
-en el panel *Environment* y URL HTTPS.
+### 3.1 Qué hay en el repositorio
+
+| Archivo | Qué hace |
+|---|---|
+| `render.yaml` | *Blueprint*: un servicio web `vektora` construido **desde el `Dockerfile`**, plan **free**, health check en `/health`. Los valores secretos llevan `sync: false`: Render los pide en el panel y nunca están en el repo. |
+| `scripts/render-env.ts` | `npm run render:env` arma `.env.render` (ignorado por Git) con la conexión a Aiven ya probada y un `AUTH_SECRET` / `CRON_SECRET` **nuevos de producción**, sin imprimir valores. |
+| `.github/workflows/agentes.yml` | El «reloj» de los agentes (ver 3.4). |
+
+### 3.2 Crear el servicio (gratis, sin tarjeta)
+
+1. `npm run render:env -- --ia ruta/a/tu/.env.local` (el `--ia` es opcional: copia
+   `GROQ_API_KEY` y `GOOGLE_AI_API_KEY` si las tenés).
+2. Entrar a <https://dashboard.render.com> con **GitHub**.
+3. **New → Blueprint** → *Public Git Repository* →
+   `https://github.com/Nicrolax/_JBDPA_Grupo_1` → **Continue**. (El repo es público, así que
+   no hace falta darle a Render acceso a la cuenta de GitHub.)
+4. *Blueprint Name*: `vektora`. Render muestra «Create web service vektora» y una fila por
+   cada variable `sync: false`. Completar con los valores de `.env.render`: `DB_HOST`,
+   `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSL_CA` (el certificado tal cual),
+   `AUTH_SECRET`, `CRON_SECRET` y, opcionalmente, las dos claves de IA.
+5. **Deploy Blueprint**. Render construye la imagen del `Dockerfile` (varios minutos la
+   primera vez), la arranca y espera a que `/health` dé 200 antes de mandarle tráfico.
+
+La URL queda en **`https://vektora.onrender.com`**, con certificado HTTPS automático.
+
+### 3.3 Comprobar
+
+```bash
+curl https://vektora.onrender.com/health
+# {"estado":"ok","app":"ok","base":"ok","configuracion":"ok",...}
+
+curl -I http://vektora.onrender.com/health      # 301 → https:// (Render fuerza HTTPS)
+curl -I https://vektora.onrender.com/panel      # 307 → /entrar (sin sesión no se entra)
+curl -X POST https://vektora.onrender.com/api/cron/emparejar   # 401 sin CRON_SECRET
+```
+
+Entrar con `cliente@vektora.test` / `Demo-Vektora-2026`. Como Render manda
+`x-forwarded-proto: https`, la cookie de sesión sale con `Secure` además de `HttpOnly` y
+`SameSite=Lax` (en el navegador: herramientas de desarrollo → Application → Cookies →
+`vektora_sesion`).
+
+📷 **Captura 6** — la app en `https://vektora.onrender.com` con el candado de HTTPS visible.
+
+### 3.4 Agentes autónomos con GitHub Actions
+
+El plan gratis de Render no tiene tareas programadas. El workflow **Agentes** hace de reloj:
+llama por HTTPS a `/api/cron/emparejar` (cada 15 min) y `/api/cron/evaluar` (cada 10 min)
+con la cabecera `Authorization: Bearer <CRON_SECRET>`.
+
+En GitHub → *Settings → Secrets and variables → Actions*:
+
+- **Variable** `APP_URL` = `https://vektora.onrender.com`
+- **Secreto** `CRON_SECRET` = el mismo valor que en Render (está en `.env.render`)
+
+Para dispararlo a mano (útil en la defensa): *Actions → Agentes → Run workflow*. La
+respuesta muestra qué tareas se adjudicaron y qué entregas evaluó el juez.
+
+### 3.5 Límites del plan gratis
+
+- Render **se duerme tras 15 min sin tráfico** y tarda ~1 min en despertar: abrir la URL un
+  par de minutos antes de la defensa. El workflow de agentes, al dispararse, lo despierta.
+- 750 horas por mes de instancia: alcanzan para un servicio encendido todo el mes.
+- Aiven Free también se apaga si no se usa: si `/health` da `"base":"sin respuesta"`,
+  encenderlo desde la consola de Aiven (**Power on**).
+
+### 3.6 Problemas frecuentes
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| El deploy queda en *Deploy failed* con `/health` en 503 | Falta `AUTH_SECRET` o un `DB_*` | Render → servicio → **Environment**, completar y *Save, rebuild and deploy* |
+| `/health` da `"base":"sin respuesta"` | Aiven apagado o datos de conexión mal copiados | Encender Aiven; revisar `DB_HOST`, `DB_PORT`, `DB_PASSWORD` |
+| `self-signed certificate in certificate chain` en los logs | `DB_SSL_CA` vacío o incompleto | Pegar el certificado entero, de `-----BEGIN` a `-----END-----` |
+| Entrar no deja sesión | Se abrió por `http://` | Usar siempre `https://` (Render redirige solo) |
+| El workflow Agentes termina con «Faltan la variable APP_URL o el secreto CRON_SECRET» | No se cargaron en GitHub | Ver 3.4 |
+| El workflow da 401 | El `CRON_SECRET` de GitHub no es igual al de Render | Copiar el mismo valor en los dos lados |
 
 ## 4. Nivel 3 — Kubernetes (minikube)
 
