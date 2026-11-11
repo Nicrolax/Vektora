@@ -7,7 +7,7 @@ ayuda: cada paso dice qué hacer, qué se tiene que ver y qué hacer si no se ve
 | Nivel | Qué se despliega | Dónde | Estado |
 |---|---|---|---|
 | 1 | App + base en contenedores; imagen en ghcr.io | Tu PC con Docker | ✅ esta guía |
-| 2 | Base en **Aiven** (SSL) + app en **Render** (HTTPS) | Nube | próxima fase |
+| 2 | Base en **Aiven** (SSL) + app en **Render** (HTTPS) | Nube | ✅ base · Render: próxima fase |
 | 3 | App + base en **Kubernetes** | minikube en tu PC | próxima fase |
 
 > **Credenciales.** Ningún archivo del repositorio tiene contraseñas. Los valores reales van
@@ -180,12 +180,105 @@ docker compose logs -f app # ver qué pasa
 
 ---
 
-## 2. Nivel 2 — Aiven y Render
+## 2. Nivel 2 — Base en Aiven (PostgreSQL con SSL)
 
-*Próxima fase del examen.* Resumen de lo que viene: base PostgreSQL gratis en Aiven, carga
-con `npm run sql:aplicar` por SSL (verificando el certificado con `DB_SSL_CA`), y la app en
-Render desde el `Dockerfile` con las variables en el panel y URL HTTPS.
+### 2.1 Crear el servicio (gratis, sin tarjeta)
 
-## 3. Nivel 3 — Kubernetes (minikube)
+1. Registrarse en <https://console.aiven.io/signup> (con GitHub o Google es lo más rápido).
+2. **Create service → PostgreSQL**. Aiven propone un plan *Developer* que usa créditos de
+   prueba y después cuesta USD 5 por mes: **no elegirlo**. Ir a **Customize plan and cloud**
+   y en *Service tier* marcar **Free** («Free forever, $0»). El plan queda `Free-1-1gb`
+   (1 CPU, 1 GB de RAM, 1 GB de disco) y la nube «North America» (el plan gratis no permite
+   elegir región).
+3. Nombre del servicio: `vektora-db` → **Create service**. Esperar a que pase de *Building*
+   a **Running** (unos 4 minutos).
+
+> El plan Free **se apaga solo si no se usa** durante un tiempo. Si la app o `db:check` no
+> conectan, entrar a la consola y tocar **Power on**. Antes de la defensa, encenderlo con
+> unos minutos de margen.
+
+### 2.2 Datos de conexión y certificado
+
+En la página del servicio, sección **Connection information**:
+
+- **Service URI**: `postgres://avnadmin:<contraseña>@<host>:<puerto>/defaultdb?sslmode=require`.
+  Tiene la contraseña: **no pegarla en chats, issues ni archivos del repo**.
+- **CA certificate** → *Download* (`ca.pem`). Es el certificado de la autoridad de Aiven:
+  con él la app verifica que del otro lado esté de verdad el servidor de Aiven (y no alguien
+  en el medio).
+
+Cargar los dos en `.env` sin escribirlos a mano:
+
+```bash
+npm run db:configurar
+```
+
+Pide la Service URI (no se ve al pegarla) y la ruta de `ca.pem`, y escribe en `.env`:
+`DB_HOST`, `DB_PORT`, `DB_NAME=defaultdb`, `DB_USER=avnadmin`, `DB_PASSWORD`,
+`DB_SSL=require`, `DB_SSL_CA` (el PEM en una línea) y `DB_POOL_MAX=5`. El resto de `.env`
+no se toca. `.env` está en `.gitignore`.
+
+### 2.3 Comprobar la conexión cifrada y cargar los scripts
+
+```bash
+npm run db:check        # la primera vez falla en «Extensiones» y «Tablas»: la base está vacía
+npm run sql:aplicar     # ejecuta sql/01-crear-tablas.sql y sql/02-datos-prueba.sql en Aiven
+npm run db:check        # ahora todo en ✓
+```
+
+`db:check` tiene que mostrar, entre otras cosas:
+
+```
+✓ conexión cifrada con SSL
+✓ certificado del servidor verificado contra DB_SSL_CA
+✓ rol authenticated (el usuario de conexión puede usarlo)
+✓ SET LOCAL ROLE authenticated + auth.uid() funcionan
+```
+
+`sql:aplicar` se niega a ejecutar nada si la conexión no va cifrada (con `DB_SSL=require`).
+En Aiven el usuario `avnadmin` **no es superusuario**: `db/00_plataforma.sql` está escrito
+para eso (crea los roles y se los asigna a sí mismo; `service_role` se crea sin
+`BYPASSRLS`, que la app no usa).
+
+Crear la cuenta de administración en esta base:
+
+```bash
+ADMIN_EMAIL=admin@ejemplo.com ADMIN_PASSWORD='al-menos-12-caracteres' npm run cuenta:admin
+```
+
+### 2.4 Evidencia: un dato creado desde la app y leído con SELECT en Aiven
+
+1. Con el `.env` apuntando a Aiven: `npm run dev` y abrir <http://localhost:3000>.
+2. Crear un dato desde la interfaz. Por ejemplo, **Crear una cuenta** nueva en `/entrar`, o
+   como admin **Administración → Catálogo de skills → Nueva skill**.
+3. En la consola de Aiven, servicio `vektora-db` → **Query editor** (o con cualquier
+   cliente PostgreSQL usando la Service URI):
+
+```sql
+select u.email, u.role, u.created_at
+  from public.users u
+ order by u.created_at desc
+ limit 5;
+```
+
+📷 **Captura 5** — el servicio `vektora-db` en *Running* y el `SELECT` con la fila creada
+desde la app.
+
+### 2.5 Problemas frecuentes
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| `db:check`: «no se pudo conectar» / timeout | El servicio Free se apagó por inactividad | Consola de Aiven → **Power on** y esperar *Running* |
+| `self-signed certificate in certificate chain` | `DB_SSL_CA` vacío o de otro servicio | Volver a correr `npm run db:configurar` con el `ca.pem` de **este** servicio |
+| `DB_SSL=require pero la conexión NO va cifrada` | Se puso `DB_SSL=disable` o un host equivocado | `DB_SSL=require` y el host de Aiven |
+| `too many connections` | El plan Free admite pocas conexiones | Dejar `DB_POOL_MAX=5` y no correr varias copias de la app a la vez |
+| `db:check`: «no es miembro de authenticated» | Los roles los creó otro usuario | Como el dueño de los roles: `grant anon, authenticated to avnadmin;` |
+
+## 3. Nivel 2 — App en Render (HTTPS)
+
+*Próxima fase del examen:* la app en Render desde el `Dockerfile`, con las mismas variables
+en el panel *Environment* y URL HTTPS.
+
+## 4. Nivel 3 — Kubernetes (minikube)
 
 *Próxima fase del examen.*

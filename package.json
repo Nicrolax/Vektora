@@ -30,7 +30,8 @@
     "sql:check": "tsx scripts/sql-build.ts --check",
     "sql:aplicar": "tsx scripts/sql-aplicar.ts",
     "cuenta:admin": "tsx scripts/cuenta-admin.ts",
-    "test:integracion": "vitest run tests/integracion"
+    "test:integracion": "vitest run tests/integracion",
+    "db:configurar": "tsx scripts/configurar-db.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
