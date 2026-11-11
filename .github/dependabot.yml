@@ -10,7 +10,6 @@ updates:
       day: monday
       timezone: America/Montevideo
     open-pull-requests-limit: 5
-    labels: [dependencias]
     commit-message:
       prefix: 'npm'
     groups:
@@ -27,7 +26,6 @@ updates:
       interval: weekly
       day: monday
       timezone: America/Montevideo
-    labels: [dependencias]
     commit-message:
       prefix: 'actions'
 
@@ -37,6 +35,5 @@ updates:
       interval: weekly
       day: monday
       timezone: America/Montevideo
-    labels: [dependencias]
     commit-message:
       prefix: 'docker'

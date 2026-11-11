@@ -42,8 +42,15 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
-# Parches de seguridad del sistema base (lo que Trivy marcaría) y un usuario propio.
+# Parches de seguridad del sistema base, un usuario propio y FUERA los gestores de paquetes.
+# La imagen oficial de Node trae npm, npx, corepack y yarn con sus propias dependencias:
+# Trivy encontró 22 vulnerabilidades (2 críticas) solo ahí (docs/informe-seguridad.md).
+# En ejecución la app es `node server.js`: nadie necesita instalar nada dentro del
+# contenedor, y si alguien lograra entrar tampoco tendría con qué.
 RUN apk upgrade --no-cache \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+           /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-* \
  && addgroup -S -g 1001 vektora \
  && adduser -S -u 1001 -G vektora -h /app vektora
 

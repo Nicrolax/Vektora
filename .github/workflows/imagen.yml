@@ -1,8 +1,9 @@
 # VEKTORA — Imagen Docker en GitHub Container Registry (Nivel 1).
 #
 # En cada push a main: construye la imagen del Dockerfile, la PRUEBA con docker compose
-# (la base se carga con sql/, /health da 200, hay 8 tareas, el proceso no corre como root)
-# y solo si todo pasa la publica en ghcr.io/<dueño>/vektora con dos etiquetas:
+# (la base se carga con sql/, /health da 200, hay 8 tareas, el proceso no corre como root,
+# no hay npm adentro, salen las cabeceras de seguridad), la escanea con Trivy y solo si
+# todo pasa la publica en ghcr.io/<dueño>/vektora con dos etiquetas:
 #   · latest      — la que usan Render y minikube
 #   · sha-<commit> — para volver a una versión exacta
 #
@@ -61,6 +62,24 @@ jobs:
           curl -fsSI http://localhost:3000/entrar > cabeceras.txt
           cat cabeceras.txt
           if grep -qi '^x-powered-by' cabeceras.txt; then echo 'expone X-Powered-By'; exit 1; fi
+          # Cabeceras de seguridad (hallazgos de ZAP) y sin gestores de paquetes (Trivy).
+          for c in content-security-policy x-frame-options x-content-type-options strict-transport-security; do
+            grep -qi "^$c:" cabeceras.txt || { echo "falta la cabecera $c"; exit 1; }
+          done
+          if docker compose exec -T app sh -c 'command -v npm || command -v npx || command -v yarn'; then
+            echo 'la imagen final no debe traer gestores de paquetes'; exit 1
+          fi
+
+      # Control de seguridad ANTES de publicar: si la imagen tiene vulnerabilidades altas o
+      # críticas con parche disponible, no sale a ghcr.io (ni a Render ni a minikube).
+      - name: Trivy — la imagen no se publica con altas o críticas corregibles
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/nicrolax/vektora:local
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
 
       - name: Registros si algo falló
         if: failure()
