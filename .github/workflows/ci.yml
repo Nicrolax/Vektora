@@ -63,21 +63,6 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
 
-      - name: db/verify — comportamiento del SQL sobre una base vacía
-        run: |
-          psql -d postgres -c 'create database verificacion'
-          for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql \
-                   db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql \
-                   db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/seeds/01_skills.sql \
-                   db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql \
-                   db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql; do
-            echo "::group::$f"
-            psql -d verificacion -v ON_ERROR_STOP=1 -q -f "$f" | tee -a verify.log
-            echo "::endgroup::"
-          done
-          # Las comprobaciones avisan con WARNING 'FALLO: …' en vez de cortar: se buscan acá.
-          if grep -q 'FALLO' verify.log; then echo 'db/verify encontró fallos'; exit 1; fi
-
       - name: sql/ como usuario NO superusuario (como avnadmin en Aiven)
         run: |
           psql -d postgres -v ON_ERROR_STOP=1 <<'SQL'
@@ -134,3 +119,21 @@ jobs:
             exit 1
           fi
           cat salida.txt
+
+      # Va AL FINAL a propósito: los roles anon/authenticated son de todo el servidor. Si este
+      # paso (superusuario) los creara primero, vektora_app ya no podría asignárselos y no se
+      # estaría probando el camino real de Aiven, donde los crea el propio avnadmin.
+      - name: db/verify — comportamiento del SQL sobre una base vacía
+        run: |
+          psql -d postgres -c 'create database verificacion'
+          for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql \
+                   db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql \
+                   db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/seeds/01_skills.sql \
+                   db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql \
+                   db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql; do
+            echo "::group::$f"
+            psql -d verificacion -v ON_ERROR_STOP=1 -q -f "$f" | tee -a verify.log
+            echo "::endgroup::"
+          done
+          # Las comprobaciones avisan con WARNING 'FALLO: …' en vez de cortar: se buscan acá.
+          if grep -q 'FALLO' verify.log; then echo 'db/verify encontró fallos'; exit 1; fi
