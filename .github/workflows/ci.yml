@@ -131,8 +131,7 @@ jobs:
         run: |
           if ! npm run test:integracion > salida.txt 2>&1; then
             cat salida.txt
-            echo "::error title=pruebas de integración::$(grep -E 'FAIL|Error|expected|×' salida.txt | head -20 | tr '
-' ' ')"
+            echo "::error title=pruebas de integración::$(grep -E 'FAIL|Error|expected|×' salida.txt | head -20 | tr '\n\r' '  ')"
             exit 1
           fi
           cat salida.txt
