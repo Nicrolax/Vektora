@@ -17,7 +17,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { Writable } from 'node:stream';
@@ -69,6 +69,20 @@ function vaciarPortapapeles(): void {
   }
 }
 
+/**
+ * Lee un archivo, o null si no existe. Se intenta leer directamente en vez de preguntar
+ * antes con existsSync: entre la pregunta y la lectura el archivo podría cambiar (carrera
+ * TOCTOU que marcó CodeQL).
+ */
+function leerSiExiste(ruta: string): string | null {
+  try {
+    return readFileSync(ruta, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
 async function main(): Promise<void> {
   console.log('\n=== VEKTORA · conexión a la base (Aiven) ===\n');
   console.log('La contraseña no se muestra al escribir ni se imprime. Todo queda solo en .env.\n');
@@ -89,11 +103,12 @@ async function main(): Promise<void> {
       ? (process.argv[indiceCa + 1] as string)
       : await preguntar('\n2) Ruta del certificado CA descargado (ej.: C:\\Users\\vos\\Downloads\\ca.pem):\n> ');
   const ruta = resolve(rutaCa.replace(/^["']|["']$/g, ''));
-  if (!existsSync(ruta)) throw new Error(`No existe el archivo ${ruta}`);
-  const ca = pemEnUnaLinea(readFileSync(ruta, 'utf8'));
+  const pem = leerSiExiste(ruta);
+  if (pem === null) throw new Error(`No existe el archivo ${ruta}`);
+  const ca = pemEnUnaLinea(pem);
   console.log('   ✓ certificado leído');
 
-  const actual = existsSync(ARCHIVO) ? readFileSync(ARCHIVO, 'utf8') : '';
+  const actual = leerSiExiste(ARCHIVO) ?? '';
   writeFileSync(
     ARCHIVO,
     actualizarEnv(actual, {
@@ -106,7 +121,7 @@ async function main(): Promise<void> {
       DB_SSL_CA: ca,
       DB_POOL_MAX: '5',
     }),
-    'utf8',
+    { encoding: 'utf8', mode: 0o600 }, // .env lleva la contraseña: solo el dueño lo lee
   );
   console.log(`\n✓ Guardado en ${ARCHIVO}. Siguiente: npm run db:check\n`);
 }

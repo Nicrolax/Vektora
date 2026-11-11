@@ -11,7 +11,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'dotenv';
 
@@ -23,11 +23,7 @@ function yaml(valor: string): string {
 }
 
 function main(): void {
-  if (existsSync(DESTINO) && !process.argv.includes('--forzar')) {
-    console.log(`\n· ${DESTINO} ya existe: no se toca (usá --forzar para regenerarlo).\n`);
-    return;
-  }
-
+  const forzar = process.argv.includes('--forzar');
   const clave = randomBytes(18).toString('base64url');
   const valores: Record<string, string> = {
     POSTGRES_USER: 'vektora',
@@ -58,7 +54,20 @@ function main(): void {
     'stringData:',
     ...Object.entries(valores).map(([k, v]) => `  ${k}: ${yaml(v)}`),
   ];
-  writeFileSync(DESTINO, `${lineas.join('\n')}\n`, 'utf8');
+  // Sin --forzar se crea con la bandera 'wx': falla si el archivo ya existe, en la MISMA
+  // operación. Antes había un «¿existe?» y después un «escribir», con un hueco en el medio
+  // (la carrera que marcó CodeQL). 0o600: solo el dueño puede leerlo.
+  try {
+    writeFileSync(DESTINO, `${lineas.join('\n')}\n`, {
+      encoding: 'utf8',
+      mode: 0o600,
+      flag: forzar ? 'w' : 'wx',
+    });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    console.log(`\n· ${DESTINO} ya existe: no se toca (usá --forzar para regenerarlo).\n`);
+    return;
+  }
   console.log(`\n✓ ${DESTINO} (ningún valor se imprimió). Siguiente: kubectl apply -f k8s/secret.yaml\n`);
 }
 

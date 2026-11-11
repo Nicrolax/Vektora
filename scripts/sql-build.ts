@@ -15,7 +15,7 @@
  * No se editan a mano: `sql:check` corre en CI y falla si alguien lo hizo.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 export const ORDEN = {
@@ -76,6 +76,19 @@ export function generar(raiz: string = process.cwd()): Map<string, string> {
   return salida;
 }
 
+/**
+ * Lee un archivo, o null si no existe. Se intenta leer directamente en vez de preguntar
+ * antes con existsSync (carrera TOCTOU que marcó CodeQL).
+ */
+function leerSiExiste(ruta: string): string | null {
+  try {
+    return readFileSync(ruta, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
 function main(): void {
   const soloComprobar = process.argv.includes('--check');
   const raiz = process.cwd();
@@ -83,7 +96,7 @@ function main(): void {
 
   for (const [destino, contenido] of generar(raiz)) {
     const ruta = resolve(raiz, destino);
-    const actual = existsSync(ruta) ? readFileSync(ruta, 'utf8').replace(/\r\n/g, '\n') : null;
+    const actual = leerSiExiste(ruta)?.replace(/\r\n/g, '\n') ?? null;
     if (soloComprobar) {
       if (actual !== contenido) {
         desactualizados += 1;
