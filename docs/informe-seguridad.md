@@ -12,7 +12,8 @@ Fecha de los análisis: 11 de noviembre de 2026 · Rama: `main`
 | Análisis | Tipo | Herramienta | Antes | Después |
 |---|---|---|---|---|
 | Dependencias | SCA | `npm audit` + Dependabot | 1 crítica, 3 altas, 2 moderadas | **0** |
-| Código | SAST | CodeQL (`security-extended`) + SonarLint | 3 altas | **0** |
+| Código | SAST | CodeQL (`security-extended`) | 3 altas | **0** |
+| Código | SAST | SonarJS (el analizador de SonarLint) | 94 avisos, 9 de reglas de seguridad | **0 explotables**; 9 justificados |
 | Imagen Docker | Contenedor | Trivy | 2 críticas, 12 altas, 17 medias | **0** |
 | Aplicación desplegada | DAST | OWASP ZAP baseline | 3 medias, 7 bajas, 5 informativas | **0 bajas**; 3 medias justificadas |
 | Secretos | Historial | gitleaks | 3 (falsos positivos) | **0** |
@@ -59,7 +60,7 @@ seguían en versiones que corren sobre Node 20, ya obsoleto: `checkout`, `setup-
 aplicaron en `a9786c8`. El séptimo era el grupo de npm de producción, que se aplicó en
 `edd76f9`.
 
-## 2. SAST — código fuente (CodeQL + SonarLint)
+## 2. SAST — código fuente (CodeQL + SonarJS/SonarLint)
 
 **Alcance:** todo el TypeScript del repositorio (`app/`, `lib/`, `components/`, `scripts/`),
 con el conjunto de reglas `security-extended` (inyección, XSS, redirecciones abiertas,
@@ -91,9 +92,50 @@ Lo que CodeQL **no** marcó también es un resultado: ninguna inyección SQL, po
 consultas usan `$1, $2…` (R9). Tampoco XSS, porque React escapa el texto y no hay
 `dangerouslySetInnerHTML`. Tampoco redirecciones abiertas ni secretos en el código.
 
-**SonarLint:** el equipo lo corre en VS Code sobre `lib/` y `app/` (extensión gratuita
-*SonarQube for IDE*) y agrega aquí sus capturas y hallazgos. 📷 **Captura S1** — panel
-*Problems* de SonarLint.
+### SonarJS (SonarLint)
+
+**Herramienta:** SonarJS 4.2, el mismo analizador que usa la extensión *SonarQube for IDE*
+(SonarLint) para TypeScript, corrido por línea de comandos con ESLint 9 y el conjunto de
+reglas `recommended`. Se eligió la línea de comandos en lugar del panel de VS Code porque da
+el mismo resultado, se puede repetir igual en cualquier PC y no hace falta capturar el editor.
+La configuración y cómo correrlo están en
+[`seguridad/sonarjs.eslint.config.mjs`](seguridad/sonarjs.eslint.config.mjs).
+
+**Alcance:** `lib/`, `app/` y `components/` (106 archivos). `scripts/` y `tests/` quedan
+afuera porque no llegan a producción. CodeQL sí los cubre.
+
+![Captura S1: SonarJS sobre lib, app y components](capturas/s1-sonarjs.png)
+
+📷 **Captura S1** — el total (94 avisos) y los 9 de reglas de seguridad, con su archivo.
+
+**Resultado:** 94 avisos. ESLint los marca todos como `error` porque así viene el conjunto
+`recommended`, pero SonarJS separa las reglas de seguridad de las de mantenibilidad:
+
+| Reglas | Cantidad | Tipo | Qué dicen |
+|---|---|---|---|
+| `super-linear-regex`, `regex-complexity` | 8 | Seguridad (ReDoS) | Expresiones regulares que pueden tardar más que lineal con entradas armadas a propósito |
+| `pseudo-random` | 1 | Seguridad | Uso de `Math.random()` |
+| `prefer-read-only-props` | 38 | Mantenibilidad | Las *props* de los componentes podrían ser `Readonly<…>` |
+| `no-alphabetical-sort`, `no-misleading-array-reverse` | 12 | Mantenibilidad | `sort()` sin comparador o sobre el mismo arreglo |
+| `no-nested-conditional`, `cognitive-complexity`, `no-nested-template-literals` | 21 | Mantenibilidad | Funciones o expresiones difíciles de leer |
+| `deprecation` | 5 | Mantenibilidad | `z.string().url()`, `.uuid()` y `.email()`, que Zod 4 reemplaza por `z.url()`, etc. |
+| `todo-tag` | 3 | Falso positivo | La palabra española «todo» («TODO dato…», «TODO camino…») |
+| Otras (`no-unused-vars`, `no-dead-store`, `different-types-comparison`…) | 6 | Mantenibilidad | Variables sin usar, una asignación que se pisa |
+
+**Análisis de los 9 de seguridad:**
+
+| Archivo | Regla | ¿Explotable? | Por qué |
+|---|---|---|---|
+| `lib/auth/servicio.ts:29` | `super-linear-regex` | **No** | Es la única que recibe texto de un usuario: el correo del login. Pero `normalizarCorreo` corta antes: si el correo pasa de 254 caracteres, ni siquiera se evalúa la expresión (línea 33). Con 254 caracteres como máximo, el peor caso es instantáneo |
+| `lib/ai/providers/groq.ts:79`, `gemini.ts:102`, `gemini-embeddings.ts:45` | `super-linear-regex` | No | `/\/+$/` sobre la URL base del proveedor, que sale de una variable de entorno: no la controla un usuario |
+| `lib/ai/json.ts:24`, `:38` | `super-linear-regex` | No | Quitan las vallas ```` ```json ```` de la respuesta del modelo. Su largo está acotado por el máximo de *tokens* de la respuesta, y no la escribe un usuario |
+| `lib/planner/schemas.ts:50` | `super-linear-regex`, `regex-complexity` | No | Detecta criterios de aceptación que dependen de una persona («aprobado por el cliente»…). Se aplica a texto que generó el modelo, con largo acotado por Zod |
+| `lib/ai/ai-client.ts:180` | `pseudo-random` | No | `Math.random()` da la variación (*jitter*) de la espera entre reintentos. No es un secreto ni un token. Lo que sí es secreto usa `node:crypto`: la firma de la sesión (`lib/auth/token.ts`), la comparación del `CRON_SECRET` (`lib/cron/autorizacion.ts`) y los secretos que generan los scripts. Es el único `Math.random()` del código |
+
+**Conclusión:** SonarJS no encontró vulnerabilidades explotables. Los 85 avisos restantes son
+de estilo y mantenibilidad, y ninguno cambia el comportamiento. Los candidatos a mejorar más
+adelante son `Readonly` en las *props*, la sintaxis nueva de Zod y simplificar las
+expresiones de `json.ts` y `schemas.ts`.
 
 ## 3. Escaneo de imagen — Trivy
 

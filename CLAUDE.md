@@ -56,6 +56,7 @@ npm run verify           # typecheck + test — correr SIEMPRE antes de dar algo
 npm run build            # next build
 
 npm run db:check         # tablas, columnas, RPC, catálogo y VEKTORA_OWNER_ID contra la base real
+npm run db:evidencia     # SELECT de la conexión (ssl, TLS) y últimas cuentas, sin mostrar el host
 npm run ai:check         # configuración, generación estructurada, fallback forzado y embeddings
 
 # Ciclo autónomo desde la línea de comandos

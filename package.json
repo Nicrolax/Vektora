@@ -16,6 +16,7 @@
     "ai:check": "tsx scripts/ai-check.ts",
     "ai:models": "tsx scripts/ai-models.ts",
     "db:check": "tsx scripts/db-check.ts",
+    "db:evidencia": "tsx scripts/db-evidencia.ts",
     "skills:embed": "tsx scripts/skills-embed.ts",
     "skills:calibrate": "tsx scripts/skills-calibrate.ts",
     "provider:add": "tsx scripts/provider-add.ts",

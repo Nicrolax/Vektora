@@ -211,22 +211,19 @@ Cada integrante domina un bloque y puede responder los otros con esta guía.
 | Ítem | Estado | Evidencia |
 |---|---|---|
 | R1 a R12 cumplidos, con la tabla en el README | ✅ | `README.md`, sección 2 de esta guía |
-| `docker compose up` funciona desde cero | ✅ en CI · ⬜ en una PC | El workflow **Imagen** lo hace en cada push con una máquina limpia. Falta la captura 1 en una PC con Docker Desktop |
+| `docker compose up` funciona desde cero | ✅ | Capturas 1, 2 y 3 (clon limpio del repo, `.env` nuevo) y el workflow **Imagen** en cada push con una máquina limpia |
 | Sin contraseñas en código, Dockerfile, manifiestos ni historial | ✅ | gitleaks: 0 hallazgos en todo el historial (`informe-seguridad.md`, §5) |
 | `.env.example` presente y `.env` en `.gitignore` | ✅ | `.env.example`, `.gitignore`, `.dockerignore` |
 | Imagen publicada en ghcr.io (pública) | ✅ | Captura 4 |
-| Conexión a Aiven por SSL | ✅ | `npm run db:check`: «conexión cifrada con SSL» y «certificado del servidor verificado contra DB_SSL_CA»; falta la captura 5 |
+| Conexión a Aiven por SSL | ✅ | Captura 5 (`npm run db:evidencia`: `ssl = true`, TLSv1.3) y `npm run db:check`: «certificado del servidor verificado contra DB_SSL_CA» |
 | URL de Render accesible por HTTPS | ✅ | Captura 6 |
-| Manifiestos en `k8s/` y pods en Running | ✅ | Captura 7 y el workflow **Kubernetes** (kind) |
-| Resultados de los análisis de seguridad | ✅ | `informe-seguridad.md`; falta la captura S1 de SonarLint |
+| Manifiestos en `k8s/` y pods en Running | ✅ | Capturas 7 y 8 y el workflow **Kubernetes** (kind) |
+| Resultados de los análisis de seguridad | ✅ | `informe-seguridad.md` y la captura S1 (SonarJS) |
 | README, guía, diagramas e informe en el repo | ✅ | `README.md`, `docs/guia-despliegue.md`, `docs/diagramas/`, `docs/informe-seguridad.md` |
 | Guía probada por otro grupo | ⬜ | Pasarles `docs/guia-despliegue.md` y anotar lo que les costó |
 | Todos pueden explicar cada archivo | ⬜ | Repasar las secciones 2 y 3 de esta guía, cada uno su bloque (sección 4) |
 
-**Capturas que faltan** (se agregan a `docs/capturas/` y se enlazan en la guía donde dice 📷):
-
-- **1, 2 y 3** — necesitan Docker Desktop en una PC: `docker compose up`, la app local con una
-  tarea entregada y el `select` de esa fila.
-- **5** — consola de Aiven: el servicio en *Running* y el `SELECT` de la consulta A (sección
-  1) con la fila creada desde la app.
-- **S1** — SonarLint en VS Code sobre `lib/` y `app/`.
+**Capturas:** todas están en `docs/capturas/` y enlazadas donde corresponde. Del 1 al 3 son de
+`docker compose` en un clon limpio del repositorio. La 4 es ghcr.io. La 5 es el `SELECT` en
+Aiven por TLS (`npm run db:evidencia`). La 6 es Render con HTTPS. La 7 y la 8 son minikube:
+`kubectl` y la app funcionando. La S1 es SonarJS, el analizador de SonarLint.

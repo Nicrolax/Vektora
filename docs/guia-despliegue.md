@@ -88,8 +88,10 @@ vektora-db-1     db        Up (healthy)
 vektora-app-1    app       Up (healthy)
 ```
 
+![Captura 1: docker compose up y docker compose ps con los dos servicios healthy](capturas/01-compose.png)
+
 📷 **Captura 1** — `docker compose up` terminado y `docker compose ps` con los dos servicios
-`healthy`.
+`healthy`, el proceso de la app como uid 1001 y `/health` en ok.
 
 ### 1.4 Comprobar
 
@@ -124,8 +126,14 @@ docker compose exec db psql -U vektora -d vektora -c \
 Las tres tablas (`deliverables`, `project_tasks`, `audit_logs`) se escribieron en **una sola
 transacción** (requisito R7).
 
+![Captura 2: la tarea T-02 entregada desde la app en localhost:3000](capturas/02-app-local.png)
+
 📷 **Captura 2** — la app en el navegador con la tarea entregada.
-📷 **Captura 3** — el `select` anterior mostrando la fila creada desde la app.
+
+![Captura 3: el select de la entrega en la base del compose](capturas/03-select-local.png)
+
+📷 **Captura 3** — el `select` anterior mostrando la fila creada desde la app: la entrega
+(versión 1), la tarea T-02 en `submitted` y el evento `deliverable.submitted` de auditoría.
 
 ### 1.6 Cuenta de administración (opcional)
 
@@ -253,18 +261,31 @@ ADMIN_EMAIL=admin@ejemplo.com ADMIN_PASSWORD='<12+ caracteres>' npm run cuenta:a
 1. Con el `.env` apuntando a Aiven: `npm run dev` y abrir <http://localhost:3000>.
 2. Crear un dato desde la interfaz. Por ejemplo, **Crear una cuenta** nueva en `/entrar`, o
    como admin **Administración → Catálogo de skills → Nueva skill**.
-3. En la consola de Aiven, servicio `vektora-db` → **Query editor** (o con cualquier
-   cliente PostgreSQL usando la Service URI):
+3. Leer el dato con un `SELECT` en Aiven. Con el mismo `.env`:
 
-```sql
-select u.email, u.role, u.created_at
-  from public.users u
- order by u.created_at desc
- limit 5;
+```bash
+npm run db:evidencia
 ```
 
-📷 **Captura 5** — el servicio `vektora-db` en *Running* y el `SELECT` con la fila creada
-desde la app.
+   Ejecuta, por la misma conexión que usa la app (`lib/db`, TLS con la CA verificada), dos
+   consultas de solo lectura y las muestra con su SQL: `pg_stat_ssl` de la propia conexión
+   (`ssl = true`, versión de TLS) y las últimas cuentas `@vektora.test`. No imprime el host,
+   porque el nombre del servicio identifica a quien lo creó. La misma consulta se puede pegar
+   en la consola de Aiven → servicio `vektora-db` → **Query editor**:
+
+```sql
+select u.email, u.role, u.status, u.created_at
+  from public.users u
+ where u.email like '%@vektora.test'
+ order by u.created_at desc
+ limit 4;
+```
+
+![Captura 5: SELECT en Aiven por TLS 1.3 con la cuenta creada desde la app](capturas/05-select-aiven.png)
+
+📷 **Captura 5** — la conexión a Aiven cifrada (`ssl = true`, TLSv1.3, PostgreSQL 18.6) y el
+`SELECT` con la cuenta `captura.aiven@vektora.test`, creada desde **Crear una cuenta** en la
+app local apuntando a Aiven.
 
 ### 2.5 Problemas frecuentes
 
@@ -417,10 +438,16 @@ Abrir la URL y entrar con `cliente@vektora.test` / `Demo-Vektora-2026`. Se entra
 `http://`, por eso el ConfigMap pone `COOKIE_SECURE=false` (una cookie `Secure` el navegador la
 descartaría por http).
 
-![Captura 7: kubectl get pods,svc,pvc en minikube](capturas/07-kubectl-minikube.png)
+![Captura 7: kubectl get pods,svc en minikube, rollout completo y /health en ok](capturas/07-kubectl-minikube.png)
 
-📷 **Captura 7** — `kubectl get pods,svc` con `vektora-db` y `vektora-app` en `Running 1/1` y
-los dos Services.
+📷 **Captura 7** — `kubectl get pods,svc` con `vektora-db` y `vektora-app` en `Running 1/1`,
+los dos Services, el rollout completo y `/health` respondiendo por el NodePort.
+
+![Captura 8: la app corriendo en minikube, con el grafo de tareas del proyecto](capturas/08-minikube-app.png)
+
+📷 **Captura 8** — la app de minikube funcionando en el navegador (por
+`kubectl port-forward svc/vektora-app 3100:3000`), con la sesión de `cliente@vektora.test` y
+el grafo de tareas del proyecto.
 
 Comprobado en la PC del equipo (minikube v1.39, Kubernetes v1.37, VirtualBox): los dos pods
 en `Running 1/1`, el PVC `Bound` de 1 Gi, 8 tareas en la base, `/health` con
@@ -452,7 +479,7 @@ El detalle de cada análisis (qué encontró, qué se corrigió y qué queda) es
 |---|---|---|
 | SCA | `npm audit` en local; en GitHub, cada push corre el workflow **Seguridad** | Resumen de la ejecución en *Actions* |
 | Dependabot | Solo: lunes de mañana | Pestaña *Pull requests* |
-| SAST | Workflow **CodeQL** en cada push; SonarLint (*SonarQube for IDE*) en VS Code | *Security → Code scanning*; panel *Problems* de VS Code |
+| SAST | Workflow **CodeQL** en cada push; SonarJS (el analizador de SonarLint) por línea de comandos | *Security → Code scanning*; `informe-seguridad.md` §2 y la captura S1 |
 | Imagen | Workflow **Imagen** (bloquea la publicación) y **Seguridad** (Trivy sobre `latest`) | Resumen de la ejecución |
 | DAST | *Actions → ZAP → Run workflow* (solo contra nuestra URL de Render) | Resumen de la ejecución y artefacto `zap` con el reporte HTML |
 | Secretos | Workflow **Seguridad**, job `secretos` (gitleaks sobre todo el historial) | Resumen de la ejecución |

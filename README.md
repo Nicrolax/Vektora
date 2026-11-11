@@ -215,6 +215,7 @@ db/
 scripts/
   ai-check.ts                Verificación de la capa de IA contra las APIs reales
   db-check.ts                npm run db:check — conexión, SSL, esquema, RLS y datos
+  db-evidencia.ts            npm run db:evidencia — SELECT de la conexión TLS y las últimas cuentas
   sql-build.ts               npm run sql:build / sql:check — genera sql/ desde db/
   sql-aplicar.ts             npm run sql:aplicar — carga sql/ en la base de DB_* (Aiven)
   cuenta-admin.ts            npm run cuenta:admin — crea o asciende la cuenta admin
@@ -335,6 +336,7 @@ tests/                       Suite de Vitest del núcleo (sin red, sin base de d
 | `npm run sql:aplicar` | Ejecuta `sql/` contra la base de `DB_*` (así se carga Aiven) |
 | `npm run cuenta:admin` | Crea o asciende la cuenta admin (`ADMIN_EMAIL`, `ADMIN_PASSWORD`) |
 | `npm run db:check` | Conexión (y SSL), extensiones, plataforma, tablas, funciones, RLS y datos |
+| `npm run db:evidencia` | Dos SELECT de solo lectura: la conexión vista por el servidor (`ssl`, TLS) y las últimas cuentas `@vektora.test` (captura 5) |
 | `npm run ai:models` | Lista los modelos que admiten tus claves y marca si el configurado ya no existe |
 | `npm run ai:check` | Comprueba configuración, generación, fallback y embeddings contra las APIs reales |
 | `npm run skills:embed` | Vectoriza el catálogo de skills (`--all` recalcula todo) |
