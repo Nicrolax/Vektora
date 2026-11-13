@@ -47,6 +47,7 @@ Nadie aprueba nada por el camino.
 | [`07-repositorio-y-auditoria.md`](07-repositorio-y-auditoria.md) | Preparación del repositorio y del análisis estático |
 | [`10-guia-para-el-equipo.md`](10-guia-para-el-equipo.md) | **Cómo funciona el proyecto en palabras simples.** Para quien no escribió el código |
 | [`11-declaracion-de-uso-de-ia.md`](11-declaracion-de-uso-de-ia.md) | **Declaración formal de uso de IA y de autoría.** Modelos empleados y alcance de lo declarado |
+| [`poster/`](poster/) | Póster para URUCON Juniors 2026 (`poster-urucon-2026.html`) y [respaldo de los costos comerciales](poster/costos-comerciales.md) que cita |
 
 La documentación técnica detallada de cada fase de desarrollo —decisiones de diseño, errores
 encontrados y cómo se corrigieron— vive fuera de esta carpeta, en el espacio de trabajo del
