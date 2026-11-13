@@ -46,4 +46,6 @@ npm-debug.log*
 Claude outputs/
 
 # --- Configuración local de Claude Code -----------------------------------------------
-.claude/
+# Se ignora todo menos las skills, que son del proyecto y las comparte el equipo.
+.claude/*
+!.claude/skills/
