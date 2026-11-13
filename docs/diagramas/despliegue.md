@@ -5,7 +5,7 @@ contraseña viaja en el repositorio.
 
 ```mermaid
 flowchart TB
-    dev(["Equipo<br/>git push a main"]) --> repo[("GitHub<br/>Nicrolax/_JBDPA_Grupo_1")]
+    dev(["Equipo<br/>git push a main"]) --> repo[("GitHub<br/>Nicrolax/Vektora")]
 
     subgraph actions["GitHub Actions (en cada push)"]
         direction TB

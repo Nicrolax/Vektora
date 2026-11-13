@@ -35,7 +35,7 @@ FROM node:${NODE_VERSION} AS runner
 WORKDIR /app
 
 # Vincula el paquete de ghcr.io con el repositorio (aparece en su página y hereda permisos).
-LABEL org.opencontainers.image.source="https://github.com/Nicrolax/_JBDPA_Grupo_1"       org.opencontainers.image.title="VEKTORA"       org.opencontainers.image.description="Plataforma autónoma de resultados (Next.js + PostgreSQL)"
+LABEL org.opencontainers.image.source="https://github.com/Nicrolax/Vektora"       org.opencontainers.image.title="VEKTORA"       org.opencontainers.image.description="Plataforma autónoma de resultados (Next.js + PostgreSQL)"
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

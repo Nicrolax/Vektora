@@ -36,7 +36,7 @@ Los cinco corren solos en GitHub Actions (salvo ZAP, que se lanza a mano):
 (`package-lock.json`).
 
 **Antes** (evidencia: [`seguridad/npm-audit-antes.txt`](seguridad/npm-audit-antes.txt) y la
-ejecución [Seguridad #1](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/runs/43027272731)):
+ejecución [Seguridad #1](https://github.com/Nicrolax/Vektora/actions/runs/43027272731)):
 
 | Paquete | Versión | Severidad | Problema (resumen) | Llega a producción |
 |---|---|---|---|---|
@@ -50,7 +50,7 @@ ejecución [Seguridad #1](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/run
 que propuso Dependabot en su PR de producción), `vitest` 5.1.0 y `npm audit fix` para
 `source-map-js` y `vite`. Se corrieron las 371 pruebas, el build y la app en el navegador.
 
-**Después:** `found 0 vulnerabilities` en local y en [Seguridad #5](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/runs/43029030185). El job `dependencias` del workflow Seguridad **falla**
+**Después:** `found 0 vulnerabilities` en local y en [Seguridad #5](https://github.com/Nicrolax/Vektora/actions/runs/43029030185). El job `dependencias` del workflow Seguridad **falla**
 si vuelve a aparecer una alta o crítica, así que una dependencia vulnerable no pasa
 desapercibida.
 
@@ -66,7 +66,7 @@ aplicaron en `a9786c8`. El séptimo era el grupo de npm de producción, que se a
 con el conjunto de reglas `security-extended` (inyección, XSS, redirecciones abiertas,
 secretos en el código, criptografía débil, carreras, etc.).
 
-**Antes** ([CodeQL #1](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/workflows/codeql.yml)):
+**Antes** ([CodeQL #1](https://github.com/Nicrolax/Vektora/actions/workflows/codeql.yml)):
 
 | # | Regla | Severidad | Archivo | Qué pasaba |
 |---|---|---|---|---|
@@ -85,7 +85,7 @@ porque son scripts que corre una persona en su PC, pero dos de ellos escriben co
 - `configurar-db` y `sql-build` leen directamente y tratan `ENOENT` como «no existe».
 - `.env` y `k8s/secret.yaml` se escriben con permisos `0600` (solo el dueño los lee).
 
-**Después** ([CodeQL #5](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/workflows/codeql.yml)):
+**Después** ([CodeQL #5](https://github.com/Nicrolax/Vektora/actions/workflows/codeql.yml)):
 las 3 alertas quedaron **cerradas como corregidas** («closed as fixed»). Hay 0 abiertas.
 
 Lo que CodeQL **no** marcó también es un resultado: ninguna inyección SQL, porque todas las
@@ -142,7 +142,7 @@ expresiones de `json.ts` y `schemas.ts`.
 **Alcance:** la imagen publicada `ghcr.io/nicrolax/vektora:latest`: el sistema base
 (Alpine) y todos los paquetes de Node que trae adentro.
 
-**Antes** ([Seguridad #3](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/runs/43028286747)):
+**Antes** ([Seguridad #3](https://github.com/Nicrolax/Vektora/actions/runs/43028286747)):
 **31 vulnerabilidades** (2 críticas, 12 altas, 17 medias).
 
 | Dónde | Cantidad | Detalle |
@@ -170,7 +170,7 @@ nunca usa npm.
    cambiaron de nombre durante el examen (`0.28.0` → `v0.36.0`), y esa es justo la puerta
    de un ataque a la cadena de suministro.
 
-**Después** ([Seguridad #5](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/runs/43029030185)):
+**Después** ([Seguridad #5](https://github.com/Nicrolax/Vektora/actions/runs/43029030185)):
 **0 vulnerabilidades** críticas, altas o medias en los 36 objetivos (Alpine y 35 paquetes de
 la app). `/usr/local/lib/node_modules/npm` ya no aparece en la imagen. El control de
 `imagen.yml` también pasó antes de publicar.
@@ -182,7 +182,7 @@ ataques. Se corrió **solo** contra nuestra URL, `https://vektora.onrender.com`.
 fija en el workflow y no hay ningún campo para cambiarla: escanear sitios ajenos está
 prohibido.
 
-**Antes** ([ZAP #1](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/runs/43027354747)), con las
+**Antes** ([ZAP #1](https://github.com/Nicrolax/Vektora/actions/runs/43027354747)), con las
 cabeceras que Render devolvía (ninguna de seguridad):
 
 | Riesgo | Alerta (id) | Corrección |
@@ -245,7 +245,7 @@ La respuesta pasó de 6189 B a 7 B. La comprobación real sigue en cada página
   estáticos de `/_next/static`, que son públicos e inmutables. El «atributo controlado por
   el usuario» es el texto de búsqueda que vuelve a aparecer en el campo; React lo escapa.
 
-**Después** ([ZAP #2](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/runs/43029469233)),
+**Después** ([ZAP #2](https://github.com/Nicrolax/Vektora/actions/runs/43029469233)),
 con Render ya desplegado con estas correcciones:
 
 | Riesgo | Alerta (id) | Estado |
@@ -264,7 +264,7 @@ Se fueron **las 7 alertas bajas** y las medias de clickjacking y de CSP ausente;
 **Alcance:** todo el historial de `main` (`fetch-depth: 0`; 21 commits en la primera
 ejecución), no solo el último commit.
 
-**Antes** ([Seguridad #1](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/runs/43027272731)):
+**Antes** ([Seguridad #1](https://github.com/Nicrolax/Vektora/actions/runs/43027272731)):
 3 hallazgos `generic-api-key`, en `README.md` (`c132ccf`) y en `docs/guia-despliegue.md`
 (`39c4251`, `c77d919`).
 
@@ -277,7 +277,7 @@ se dispara por la forma `PASSWORD='texto-largo'`. **Falsos positivos.**
 de los tres commits viejos van a `.gitleaksignore` con la justificación. No se reescribió el
 historial: `main` es público y no había nada que ocultar.
 
-**Después** ([Seguridad #5](https://github.com/Nicrolax/_JBDPA_Grupo_1/actions/runs/43029030185)):
+**Después** ([Seguridad #5](https://github.com/Nicrolax/Vektora/actions/runs/43029030185)):
 **0 hallazgos** en 25 commits.
 
 También se escaneó la carpeta de trabajo (`--no-git`). Las claves reales aparecen **solo** en

@@ -31,7 +31,7 @@ administrador → `wsl --install` → reiniciar → instalar Docker Desktop desd
 esperar a que diga *Engine running*.
 
 ```bash
-git clone https://github.com/Nicrolax/_JBDPA_Grupo_1.git vektora
+git clone https://github.com/Nicrolax/Vektora.git vektora
 cd vektora
 ```
 
@@ -313,7 +313,7 @@ app local apuntando a Aiven.
    `GROQ_API_KEY` y `GOOGLE_AI_API_KEY` si las tenés).
 2. Entrar a <https://dashboard.render.com> con **GitHub**.
 3. **New → Blueprint** → *Public Git Repository* →
-   `https://github.com/Nicrolax/_JBDPA_Grupo_1` → **Continue**. (El repo es público, así que
+   `https://github.com/Nicrolax/Vektora` → **Continue**. (El repo es público, así que
    no hace falta darle a Render acceso a la cuenta de GitHub.)
 4. *Blueprint Name*: `vektora`. Render muestra «Create web service vektora» y una fila por
    cada variable `sync: false`. Completar con los valores de `.env.render`: `DB_HOST`,

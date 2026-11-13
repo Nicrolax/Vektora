@@ -221,7 +221,7 @@ Los umbrales son **medidos, no puestos a ojo**. No cambiarlos sin volver a medir
 
 ## Git
 
-- Remoto: `https://github.com/Nicrolax/_JBDPA_Grupo_1.git` (rama `main`).
+- Remoto: `https://github.com/Nicrolax/Vektora.git` (rama `main`).
 - Commits solo cuando se pidan. Después de cada commit, **verificar leyendo de vuelta** con
   `git show` / `git diff` que el contenido es el esperado: ya hubo commits que «reportaron
   éxito» con contenido obsoleto.
