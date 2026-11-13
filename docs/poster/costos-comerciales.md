@@ -73,10 +73,11 @@ de IA es despreciable frente a la infraestructura, aun si fuera diez veces mayor
 - **Dominio `.com`:** unos US$ 10 por año de renovación, ≈ US$ 1 por mes. El primer año suele
   costar menos por promociones.
 - **GitHub Actions** (dispara los agentes cada 10 y 15 minutos, en `.github/workflows/agentes.yml`):
-  gratis e ilimitado en un repositorio público. En uno privado, el plan Free incluye 2 000
-  minutos por mes en Linux y el excedente cuesta US$ 0,002 por minuto. Los alrededor de
-  7 000 disparos por mes costarían unos US$ 10 si fueran privados. Para no depender de eso,
-  el planificador se puede pasar a un *cron job* de Render.
+  gratis e ilimitado en un repositorio público, y el del proyecto (`Nicrolax/Vektora`) lo
+  es. Si algún día pasara a privado, el plan Free incluye 2 000 minutos por mes en Linux y
+  el excedente cuesta US$ 0,002 por minuto: los alrededor de 7 000 disparos por mes
+  costarían unos US$ 10. Para no depender de eso, el planificador se puede pasar a un
+  *cron job* de Render.
 
 ## Cómo se verificó y qué falta
 
