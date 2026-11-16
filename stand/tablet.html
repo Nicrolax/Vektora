@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d0c17">
+<title>VEKTORA · Sé el juez</title>
+<!--
+  VEKTORA — stand de URUCON Juniors 2026 (tablet Samsung Galaxy Tab A8, horizontal).
+
+  Un solo archivo, SIN internet: nada se descarga, nada se guarda, no se pide ningún dato.
+  · Sin nadie tocándola: animación en bucle del ciclo autónomo (planificar → adjudicar →
+    revisar → listo).
+  · Al tocarla: «Sé el juez», tres entregas para evaluar criterio por criterio y comparar
+    con el juez de VEKTORA. Al final, un QR a la demo.
+  · Vuelve sola al inicio tras un rato sin que nadie la toque.
+
+  Los casos son de ejemplo, resueltos con las reglas reales del juez (lib/qa/policy.ts):
+  se aprueba solo si se cumplen TODOS los criterios; si falta evidencia se pide, no se
+  castiga; y un primer intento nunca se rechaza, se piden cambios.
+  Instrucciones de instalación: stand/LEEME.md.
+-->
+<style>
+  :root {
+    --fondo: #0d0c17;
+    --panel: #161729;
+    --panel-alto: #1e2036;
+    --borde: #2f3250;
+    --texto: #f5f6fb;
+    --tenue: #b9bbcd;
+    --apagado: #84879e;
+    --acento: #9b6bff;
+    --acento-claro: #b892ff;
+    --acento-fin: #f0509f;
+    --aprobada: #3dd68c;
+    --revision: #f8a14a;
+    --fallida: #f2555a;
+    --duda: #6cb6ff;
+    --radio: 18px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background:
+      radial-gradient(1200px 700px at 85% -10%, #2a1d52 0%, transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, #3a1236 0%, transparent 55%),
+      var(--fondo);
+    color: var(--texto);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+
+  .pantalla { position: fixed; inset: 0; display: none; padding: 28px 40px; }
+  .pantalla.activa { display: flex; flex-direction: column; animation: entrar 260ms ease-out; }
+  @keyframes entrar { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  .marca { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .14em; font-size: 18px; }
+  .marca svg { width: 22px; height: 22px; }
+  .degradado {
+    background: linear-gradient(100deg, var(--acento-claro), var(--acento) 40%, var(--acento-fin));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .boton {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    min-height: 64px; padding: 0 34px; border-radius: 999px; font-size: 22px; font-weight: 700;
+    background: linear-gradient(100deg, var(--acento), var(--acento-fin)); color: #fff;
+    box-shadow: 0 10px 30px -10px #f0509f88;
+    transition: transform 120ms ease, opacity 160ms ease;
+  }
+  .boton:active { transform: scale(.97); }
+  .boton[disabled] { opacity: .35; box-shadow: none; }
+  .boton.secundario { background: var(--panel-alto); box-shadow: none; border: 1px solid var(--borde); }
+  .tarjeta { background: var(--panel); border: 1px solid var(--borde); border-radius: var(--radio); }
+
+  /* ---------------------------------------------------------------- atraer */
+  #atraer { display: none; }
+  #atraer.activa { display: grid; grid-template-columns: 0.9fr 1.1fr; grid-template-rows: auto 1fr auto; gap: 18px 40px; }
+  #atraer .marca { grid-column: 1 / -1; }
+  .lema { align-self: center; }
+  .lema h1 { font-size: clamp(40px, 5.2vw, 66px); line-height: 1.02; font-weight: 800; letter-spacing: -.02em; }
+  .lema p { margin-top: 22px; font-size: 22px; line-height: 1.45; color: var(--tenue); max-width: 30ch; }
+  .escenario { position: relative; align-self: center; padding: 22px; height: 100%; max-height: 560px; display: flex; flex-direction: column; }
+  .pasos { display: flex; gap: 8px; margin-bottom: 14px; }
+  .paso { flex: 1; text-align: center; font-size: 15px; font-weight: 700; padding: 9px 4px; border-radius: 999px;
+          color: var(--apagado); background: var(--panel-alto); transition: all 260ms ease; }
+  .paso.on { color: #fff; background: linear-gradient(100deg, var(--acento), var(--acento-fin)); }
+  .objetivo { font-size: 19px; padding: 14px 16px; border-radius: 14px; background: var(--panel-alto);
+              border: 1px solid var(--borde); min-height: 54px; }
+  .objetivo b { color: var(--acento-claro); font-weight: 700; }
+  .cursor { display: inline-block; width: 2px; height: 1.1em; background: var(--acento-claro); vertical-align: -3px; margin-left: 2px; animation: parpadeo 1s steps(1) infinite; }
+  @keyframes parpadeo { 50% { opacity: 0; } }
+  .grafo { position: relative; flex: 1; min-height: 300px; margin-top: 12px; }
+  .grafo svg.aristas { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .arista { stroke: var(--borde); stroke-width: 3; fill: none; vector-effect: non-scaling-stroke; stroke-dasharray: 400; stroke-dashoffset: 400; transition: stroke-dashoffset 600ms ease, stroke 260ms; }
+  .arista.on { stroke-dashoffset: 0; }
+  .arista.viva { stroke: var(--aprobada); }
+  .nodo { position: absolute; width: 30%; padding: 10px 12px; border-radius: 14px; background: var(--panel-alto);
+          border: 1.5px solid var(--borde); opacity: 0; transform: scale(.85); transition: all 260ms ease; }
+  .nodo.on { opacity: 1; transform: none; }
+  .nodo .cod { font: 700 12px ui-monospace, monospace; color: var(--apagado); }
+  .nodo .tit { font-size: 16px; font-weight: 700; margin: 2px 0 6px; }
+  .estado { display: inline-block; font-size: 12.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: #ffffff12; color: var(--tenue); }
+  .estado.lista { color: var(--duda); background: #6cb6ff1f; }
+  .estado.asignada { color: var(--acento-claro); background: #9b6bff26; }
+  .estado.aprobada { color: var(--aprobada); background: #3dd68c22; }
+  .nodo.aprobada { border-color: #3dd68c88; }
+  .prov { font-size: 13px; color: var(--tenue); margin-top: 6px; opacity: 0; transition: opacity 260ms; }
+  .prov.on { opacity: 1; }
+  .prov b { color: var(--texto); }
+  .listo { position: absolute; left: 50%; bottom: 6px; transform: translate(-50%, 10px); opacity: 0; transition: all 300ms ease;
+           white-space: nowrap; font-size: 18px; font-weight: 700; padding: 10px 20px; border-radius: 999px;
+           background: #3dd68c22; color: var(--aprobada); border: 1px solid #3dd68c66; }
+  .listo.on { opacity: 1; transform: translate(-50%, 0); }
+  .llamado { grid-column: 1 / -1; display: flex; justify-content: center; }
+  .llamado .boton { min-height: 76px; font-size: 26px; padding: 0 46px; animation: latido 2.2s ease-in-out infinite; }
+  @keyframes latido { 50% { transform: scale(1.04); } }
+
+  /* ----------------------------------------------------------------- intro */
+  #intro { align-items: center; justify-content: center; text-align: center; gap: 26px; }
+  #intro h2 { font-size: 64px; font-weight: 800; letter-spacing: -.02em; }
+  #intro p { font-size: 24px; line-height: 1.5; color: var(--tenue); max-width: 46ch; }
+  .leyenda { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .leyenda span { font-size: 20px; font-weight: 700; padding: 10px 18px; border-radius: 999px; background: var(--panel); border: 1px solid var(--borde); }
+
+  /* ------------------------------------------------------------------ caso */
+  #caso .cabecera { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+  .progreso { display: flex; gap: 8px; align-items: center; font-size: 17px; color: var(--tenue); font-weight: 600; }
+  .progreso i { width: 34px; height: 8px; border-radius: 4px; background: var(--panel-alto); }
+  .progreso i.on { background: linear-gradient(90deg, var(--acento), var(--acento-fin)); }
+  .cuerpo { flex: 1; display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 24px; min-height: 0; }
+  .izq { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+  .tarea { padding: 20px 22px; }
+  .tarea .proy { font-size: 15px; color: var(--apagado); }
+  .tarea h3 { font-size: 30px; margin-top: 4px; line-height: 1.2; }
+  .entrega { padding: 18px 22px; border-left: 4px solid var(--acento); }
+  .entrega .quien { font-size: 16px; color: var(--tenue); font-weight: 600; margin-bottom: 8px; }
+  .entrega p { font-size: 22px; line-height: 1.45; }
+  .veredicto { padding: 18px 22px; display: none; border-width: 1.5px; }
+  .veredicto.on { display: block; animation: entrar 260ms ease-out; }
+  .veredicto .tipo { font-size: 26px; font-weight: 800; }
+  .veredicto p { font-size: 18px; line-height: 1.45; color: var(--tenue); margin-top: 6px; }
+  .der { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .der .titulo { font-size: 15px; color: var(--apagado); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .criterio { padding: 14px 16px; }
+  .criterio .texto { font-size: 21px; line-height: 1.35; display: flex; gap: 10px; }
+  .criterio .texto code { font: 700 13px ui-monospace, monospace; color: var(--apagado); padding-top: 6px; white-space: nowrap; }
+  .opciones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+  .op { min-height: 64px; border-radius: 14px; font-size: 19px; font-weight: 700; background: var(--panel-alto);
+        border: 2px solid transparent; color: var(--tenue); position: relative; transition: all 140ms ease; }
+  .op:active { transform: scale(.97); }
+  .op[data-v="pass"].elegida { color: var(--aprobada); border-color: var(--aprobada); background: #3dd68c1c; }
+  .op[data-v="fail"].elegida { color: var(--fallida); border-color: var(--fallida); background: #f2555a1c; }
+  .op[data-v="unverifiable"].elegida { color: var(--duda); border-color: var(--duda); background: #6cb6ff1c; }
+  .revelado .op { pointer-events: none; }
+  .revelado .op:not(.elegida):not(.juez) { opacity: .35; }
+  .op.juez::after { content: "JUEZ"; position: absolute; top: -9px; right: 8px; font-size: 11px; letter-spacing: .08em;
+                    padding: 2px 7px; border-radius: 999px; background: linear-gradient(90deg, var(--acento), var(--acento-fin)); color: #fff; }
+  .op.juez:not(.elegida) { border: 2px dashed var(--acento-claro); color: var(--texto); }
+  .explica { display: none; margin-top: 10px; font-size: 17.5px; line-height: 1.4; color: var(--tenue); }
+  .revelado .explica { display: block; }
+  .explica b.si { color: var(--aprobada); }
+  .explica b.no { color: var(--revision); }
+  .pie { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; min-height: 76px; }
+  .pie .nota { font-size: 16px; color: var(--apagado); max-width: 52ch; }
+
+  /* ----------------------------------------------------------------- final */
+  #final { display: none; }
+  #final.activa { display: grid; grid-template-columns: 1.2fr .8fr; gap: 40px; align-items: center; }
+  .puntaje { font-size: 92px; font-weight: 800; line-height: 1; }
+  .puntaje small { font-size: 34px; color: var(--tenue); font-weight: 700; }
+  .mensaje { font-size: 30px; font-weight: 700; margin-top: 14px; }
+  .resumen { margin-top: 26px; display: grid; gap: 12px; }
+  .resumen div { font-size: 20px; line-height: 1.4; color: var(--tenue); padding-left: 30px; position: relative; }
+  .resumen div::before { content: ""; position: absolute; left: 6px; top: 10px; width: 10px; height: 10px; border-radius: 50%;
+                         background: linear-gradient(90deg, var(--acento), var(--acento-fin)); }
+  .resumen b { color: var(--texto); }
+  .qr { padding: 26px; text-align: center; }
+  .qr .codigo { background: #fff; border-radius: 14px; padding: 6px; width: min(260px, 100%); margin: 0 auto; }
+  .qr .codigo svg { display: block; width: 100%; height: auto; }
+  .qr .url { font-size: 22px; font-weight: 700; margin-top: 16px; }
+  .qr .txt { font-size: 16px; color: var(--tenue); margin-top: 6px; }
+  .final-pie { grid-column: 1 / -1; display: flex; justify-content: center; }
+
+  @media (orientation: portrait), (max-width: 900px) {
+    .pantalla { padding: 22px; overflow-y: auto; }
+    #atraer.activa, #final.activa { grid-template-columns: 1fr; }
+    .cuerpo { grid-template-columns: 1fr; }
+    .escenario { max-height: 480px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================================================================== ATRAER -->
+<section id="atraer" class="pantalla activa" aria-label="Presentación">
+  <div class="marca"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4l18 8-18 8 5-8z" fill="url(#g)"/><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#b892ff"/><stop offset="1" stop-color="#f0509f"/></linearGradient></defs></svg>VEKTORA</div>
+
+  <div class="lema">
+    <h1>Proyectos que<br><span class="degradado">se coordinan solos</span></h1>
+    <p>Decís qué necesitás. El sistema lo divide en tareas, busca quién lo haga y revisa lo entregado. Sin que ninguna persona decida nada.</p>
+  </div>
+
+  <div class="escenario tarjeta" aria-hidden="true">
+    <div class="pasos">
+      <div class="paso" data-p="1">1 · Planifica</div>
+      <div class="paso" data-p="2">2 · Adjudica</div>
+      <div class="paso" data-p="3">3 · Revisa</div>
+      <div class="paso" data-p="4">4 · Listo</div>
+    </div>
+    <div class="objetivo"><b>Objetivo:</b> <span id="tipeo"></span><span class="cursor"></span></div>
+    <div class="grafo">
+      <svg class="aristas" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path class="arista" data-a="1-3" d="M30 22 C 33.5 22, 31.5 44, 35 44"/>
+        <path class="arista" data-a="2-3" d="M30 72 C 33.5 72, 31.5 50, 35 50"/>
+        <path class="arista" data-a="3-4" d="M65 47 L 70 47"/>
+      </svg>
+      <div class="nodo" data-n="1" style="left:0; top:6%;"><div class="cod">T-01</div><div class="tit">Logo</div><span class="estado"></span><div class="prov"><b>Sofía</b> · puntaje 0,82</div></div>
+      <div class="nodo" data-n="2" style="left:0; top:56%;"><div class="cod">T-02</div><div class="tit">Fotos del café</div><span class="estado"></span><div class="prov"><b>Lucía</b> · puntaje 0,74</div></div>
+      <div class="nodo" data-n="3" style="left:35%; top:31%;"><div class="cod">T-03</div><div class="tit">Tienda online</div><span class="estado"></span><div class="prov"><b>Diego</b> · puntaje 0,79</div></div>
+      <div class="nodo" data-n="4" style="left:70%; top:31%;"><div class="cod">T-04</div><div class="tit">Pruebas</div><span class="estado"></span><div class="prov"><b>Martín</b> · puntaje 0,71</div></div>
+      <div class="listo">✓ Proyecto completado · nadie tuvo que decidir nada</div>
+    </div>
+  </div>
+
+  <div class="llamado"><button class="boton" id="jugar">Tocá para jugar: ¿sos tan exigente como el juez?</button></div>
+</section>
+
+<!-- =================================================================== INTRO -->
+<section id="intro" class="pantalla" aria-label="Cómo se juega">
+  <div class="marca"><span class="degradado">VEKTORA</span></div>
+  <h2>Sé el <span class="degradado">juez</span></h2>
+  <p>En VEKTORA, una inteligencia artificial revisa cada entrega contra los criterios que se fijaron <b>antes</b> de que nadie trabajara. Criterio por criterio, decide una de tres cosas:</p>
+  <div class="leyenda">
+    <span style="color:var(--aprobada)">✓ Cumple</span>
+    <span style="color:var(--fallida)">✗ No cumple</span>
+    <span style="color:var(--duda)">? Falta evidencia</span>
+  </div>
+  <p>Te mostramos <b>3 entregas</b>. Juzgalas vos y compará con el juez.</p>
+  <button class="boton" id="empezar">Empezar</button>
+</section>
+
+<!-- ==================================================================== CASO -->
+<section id="caso" class="pantalla" aria-label="Caso">
+  <div class="cabecera">
+    <div class="marca"><span class="degradado">VEKTORA</span> <span style="color:var(--tenue);letter-spacing:.04em;font-weight:700">· Sé el juez</span></div>
+    <div class="progreso"><span id="progreso-txt"></span><i></i><i></i><i></i></div>
+  </div>
+  <div class="cuerpo">
+    <div class="izq">
+      <div class="tarjeta tarea"><div class="proy" id="c-proyecto"></div><h3 id="c-tarea"></h3></div>
+      <div class="tarjeta entrega"><div class="quien" id="c-quien"></div><p id="c-entrega"></p></div>
+      <div class="tarjeta veredicto" id="c-veredicto"><div class="tipo" id="c-v-tipo"></div><p id="c-v-por"></p></div>
+    </div>
+    <div class="der">
+      <div class="titulo">Criterios de aceptación</div>
+      <div id="c-criterios" style="display:flex;flex-direction:column;gap:12px"></div>
+    </div>
+  </div>
+  <div class="pie">
+    <div class="nota" id="c-nota">Tocá una opción en cada criterio.</div>
+    <button class="boton" id="c-boton" disabled>Ver qué dijo el juez</button>
+  </div>
+</section>
+
+<!-- =================================================================== FINAL -->
+<section id="final" class="pantalla" aria-label="Resultado">
+  <div>
+    <div class="puntaje"><span class="degradado" id="f-aciertos"></span> <small id="f-total"></small></div>
+    <div class="mensaje" id="f-mensaje"></div>
+    <div class="resumen">
+      <div>Lo que acabás de hacer, <b>VEKTORA lo hace solo</b> con cada entrega, y deja escrito por qué.</div>
+      <div>Antes, <b>divide el objetivo en tareas</b> con sus dependencias y criterios.</div>
+      <div><b>Elige a quién dárselas</b> con un puntaje explicado: afinidad, habilidades y reputación.</div>
+      <div>Si algo se traba, <b>sale solo</b>: ninguna tarea espera a una persona que no existe.</div>
+    </div>
+  </div>
+  <div class="tarjeta qr">
+    <div class="codigo" aria-label="Código QR de vektora.onrender.com">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h33v33H0z"/><path stroke="#0b0a14" d="M2 2.5h7m2 0h1m1 0h1m1 0h1m2 0h1m1 0h2m2 0h7M2 3.5h1m5 0h1m1 0h1m2 0h2m1 0h6m2 0h1m5 0h1M2 4.5h1m1 0h3m1 0h1m5 0h3m1 0h1m5 0h1m1 0h3m1 0h1M2 5.5h1m1 0h3m1 0h1m2 0h2m2 0h3m2 0h2m2 0h1m1 0h3m1 0h1M2 6.5h1m1 0h3m1 0h1m1 0h1m1 0h2m2 0h1m4 0h1m2 0h1m1 0h3m1 0h1M2 7.5h1m5 0h1m5 0h2m5 0h1m2 0h1m5 0h1M2 8.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M11 9.5h3m1 0h2m1 0h2m2 0h1M2 10.5h1m1 0h1m1 0h1m1 0h1m2 0h3m2 0h2m1 0h4m3 0h1m2 0h1M3 11.5h2m2 0h1m1 0h1m1 0h1m1 0h1m2 0h2m4 0h3m2 0h1m2 0h1M2 12.5h1m1 0h1m2 0h3m1 0h1m3 0h1m3 0h1m3 0h1m2 0h1m1 0h3M3 13.5h4m2 0h1m3 0h2m2 0h1m1 0h1m1 0h2m1 0h1m4 0h1M2 14.5h1m5 0h1m1 0h1m3 0h1m3 0h2m2 0h4m1 0h1m1 0h2M2 15.5h3m1 0h1m2 0h1m1 0h1m1 0h1m1 0h1m1 0h3m2 0h1m1 0h1m2 0h1m2 0h1M3 16.5h3m1 0h2m2 0h3m2 0h5m1 0h1m1 0h2m1 0h1m1 0h2M3 17.5h1m2 0h2m2 0h2m1 0h1m1 0h2m1 0h3m2 0h5m1 0h1M2 18.5h2m2 0h3m4 0h1m2 0h2m1 0h1m3 0h2m2 0h1m1 0h2M5 19.5h2m2 0h2m1 0h1m3 0h2m4 0h3m2 0h2m1 0h1M2 20.5h1m1 0h7m4 0h1m3 0h1m2 0h1m1 0h3m2 0h2M3 21.5h1m1 0h1m4 0h3m4 0h1m1 0h2m1 0h1m4 0h1m1 0h1M2 22.5h1m1 0h1m1 0h4m3 0h1m4 0h2m1 0h6M10 23.5h3m1 0h2m1 0h2m2 0h2m3 0h1m1 0h3M2 24.5h7m3 0h1m1 0h1m1 0h3m2 0h2m1 0h1m1 0h2m1 0h2M2 25.5h1m5 0h1m3 0h2m1 0h2m1 0h3m1 0h1m3 0h2m1 0h1M2 26.5h1m1 0h3m1 0h1m1 0h1m1 0h1m3 0h2m2 0h1m1 0h5m2 0h1M2 27.5h1m1 0h3m1 0h1m4 0h1m1 0h3m4 0h2m1 0h2m1 0h1M2 28.5h1m1 0h3m1 0h1m1 0h2m7 0h1m1 0h1m3 0h3m2 0h1M2 29.5h1m5 0h1m2 0h1m1 0h2m2 0h1m3 0h2m1 0h3m2 0h1M2 30.5h7m1 0h1m1 0h1m1 0h1m3 0h1m2 0h2m2 0h3m1 0h2"/></svg>
+    </div>
+    <div class="url">vektora.onrender.com</div>
+    <div class="txt">Escaneá y probá la demo desde tu celular.</div>
+  </div>
+  <div class="final-pie"><button class="boton secundario" id="otra-vez">Volver al inicio</button></div>
+</section>
+
+<script>
+'use strict';
+
+// ------------------------------------------------------------------ casos
+// Ejemplos resueltos con las reglas del juez de VEKTORA (lib/qa/policy.ts).
+const CASOS = [
+  {
+    proyecto: 'Sitio de reservas para un consultorio odontológico',
+    tarea: 'Diseño de la agenda de turnos',
+    quien: 'Entregó Sofía · diseño de interfaz',
+    entrega: 'Van las cuatro pantallas: calendario, elección de horario, confirmación y panel de recepción. El texto principal es gris oscuro (#1F2937) sobre blanco: contraste de 14,7 a 1.',
+    criterios: [
+      { texto: 'Hay diseños de las cuatro pantallas: calendario, horario, confirmación y panel de recepción.',
+        juez: 'pass', por: 'Nombra las cuatro pantallas, una por una.' },
+      { texto: 'El texto cumple contraste AA: 4,5 a 1 o más.',
+        juez: 'pass', por: 'Informa 14,7 a 1, muy por encima de 4,5.' },
+    ],
+    veredicto: 'aprobado',
+    porque: 'Todos los criterios se cumplen con evidencia concreta. La tarea se cierra, la reputación de Sofía sube y las tareas que dependían de esta se desbloquean solas.',
+  },
+  {
+    proyecto: 'Identidad de marca para una cafetería',
+    tarea: 'Diseñar el logo',
+    quien: 'Entregó Andrés · diseño gráfico',
+    entrega: 'Un logo moderno y minimalista: una taza que forma la letra C. Va en PNG, en versión a color y en blanco y negro. Adjunto una captura del ícono a 32 px: se sigue leyendo.',
+    criterios: [
+      { texto: 'Hay una versión a color y otra en blanco y negro.',
+        juez: 'pass', por: 'La entrega dice que van las dos versiones.' },
+      { texto: 'Los archivos se entregan en SVG (vectorial).',
+        juez: 'fail', por: 'Se entregó en PNG. Que sea «moderno y minimalista» no cambia el formato que se pidió.' },
+      { texto: 'Se adjunta una captura del logo a 32 px.',
+        juez: 'pass', por: 'La captura está y la entrega la menciona.' },
+    ],
+    veredicto: 'cambios',
+    porque: 'Un solo criterio sin cumplir alcanza para no aprobar: el cliente pidió los tres. Como es el primer intento, no se rechaza: se le piden cambios a Andrés.',
+  },
+  {
+    proyecto: 'Sitio de reservas para un consultorio odontológico',
+    tarea: 'Probar el formulario de reservas',
+    quien: 'Entregó Martín · calidad',
+    entrega: 'Probé el formulario de reservas y anda todo bien. No encontré errores importantes.',
+    criterios: [
+      { texto: 'Se probó en celular y en computadora.',
+        juez: 'unverifiable', por: 'No dice en qué dispositivos se probó. «Anda todo bien» no es una prueba: el juez no castiga, pide que se muestre.' },
+      { texto: 'Se adjunta la lista de casos probados, con su resultado.',
+        juez: 'fail', por: 'No hay ninguna lista, solo una frase.' },
+    ],
+    veredicto: 'cambios',
+    porque: 'Cuando falta evidencia, el juez no adivina ni castiga: la pide. Y sin la lista de casos no hay nada que aprobar. Martín puede corregir y volver a entregar.',
+  },
+];
+
+const ETIQUETA = { pass: '✓ Cumple', fail: '✗ No cumple', unverifiable: '? Falta evidencia' };
+const NOMBRE = { pass: 'cumple', fail: 'no cumple', unverifiable: 'falta evidencia' };
+const VEREDICTO = {
+  aprobado: { tipo: '✓ Aprobado', color: 'var(--aprobada)' },
+  cambios: { tipo: '↺ Cambios pedidos', color: 'var(--revision)' },
+};
+
+// ----------------------------------------------------------------- estado
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => [...document.querySelectorAll(sel)];
+let caso = 0;
+let respuestas = [];
+let aciertos = 0;
+let total = 0;
+let revelado = false;
+
+function mostrar(id) {
+  $$('.pantalla').forEach((p) => p.classList.toggle('activa', p.id === id));
+  if (id === 'atraer') iniciarAnimacion(); else detenerAnimacion();
+  reiniciarInactividad();
+}
+
+// ------------------------------------------------- vuelta sola al inicio
+const ESPERA = { intro: 45, caso: 75, final: 40 }; // segundos sin tocar
+let temporizador = null;
+function reiniciarInactividad() {
+  clearTimeout(temporizador);
+  const actual = $('.pantalla.activa')?.id;
+  const segundos = ESPERA[actual];
+  if (segundos) temporizador = setTimeout(() => mostrar('atraer'), segundos * 1000);
+}
+document.addEventListener('pointerdown', reiniciarInactividad, { passive: true });
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Pantalla completa al primer toque (Chrome en Android la permite tras un gesto).
+function pantallaCompleta() {
+  const el = document.documentElement;
+  if (document.fullscreenElement || !el.requestFullscreen) return;
+  el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+}
+
+// ------------------------------------------------------ animación de inicio
+let pasos = [];
+function detenerAnimacion() { pasos.forEach(clearTimeout); pasos = []; }
+function en(ms, fn) { pasos.push(setTimeout(fn, ms)); }
+
+const OBJETIVO = 'Quiero abrir una tienda online de café';
+const nodo = (n) => $(`.nodo[data-n="${n}"]`);
+function estadoNodo(n, clase, texto) {
+  const e = nodo(n).querySelector('.estado');
+  e.className = `estado ${clase}`;
+  e.textContent = texto;
+  nodo(n).classList.toggle('aprobada', clase === 'aprobada');
+}
+function paso(p) { $$('.paso').forEach((x) => x.classList.toggle('on', Number(x.dataset.p) === p)); }
+
+function iniciarAnimacion() {
+  detenerAnimacion();
+  paso(0);
+  $('#tipeo').textContent = '';
+  $$('.nodo').forEach((x) => { x.classList.remove('on', 'aprobada'); x.querySelector('.prov').classList.remove('on'); });
+  $$('.arista').forEach((x) => x.classList.remove('on', 'viva'));
+  $('.listo').classList.remove('on');
+
+  let t = 400;
+  [...OBJETIVO].forEach((letra, i) => en(t + i * 55, () => { $('#tipeo').textContent += letra; }));
+  t += OBJETIVO.length * 55 + 700;
+
+  // 1 · Planifica: el objetivo se vuelve un grafo de tareas.
+  en(t, () => paso(1));
+  [1, 2, 3, 4].forEach((n, i) => en(t + 300 + i * 380, () => {
+    nodo(n).classList.add('on');
+    estadoNodo(n, n <= 2 ? 'lista' : '', n <= 2 ? 'lista' : 'bloqueada');
+  }));
+  en(t + 1700, () => $$('.arista').forEach((x) => x.classList.add('on')));
+  t += 3000;
+
+  // 2 · Adjudica: cada tarea lista va al mejor candidato, con su puntaje.
+  en(t, () => paso(2));
+  [1, 2].forEach((n, i) => en(t + 400 + i * 500, () => {
+    nodo(n).querySelector('.prov').classList.add('on');
+    estadoNodo(n, 'asignada', 'adjudicada');
+  }));
+  t += 2200;
+
+  // 3 · Revisa: al aprobarse una tarea, se desbloquean las que dependían de ella.
+  en(t, () => paso(3));
+  const aprobar = (n, ms) => en(t + ms, () => {
+    estadoNodo(n, 'aprobada', '✓ aprobada');
+    $$(`.arista[data-a^="${n}-"]`).forEach((x) => x.classList.add('viva'));
+  });
+  const adjudicar = (n, ms) => en(t + ms, () => {
+    estadoNodo(n, 'lista', 'lista');
+    en(600, () => { nodo(n).querySelector('.prov').classList.add('on'); estadoNodo(n, 'asignada', 'adjudicada'); });
+  });
+  aprobar(1, 300); aprobar(2, 900);
+  adjudicar(3, 1500); aprobar(3, 3000);
+  adjudicar(4, 3500); aprobar(4, 5000);
+  t += 5800;
+
+  // 4 · Listo.
+  en(t, () => { paso(4); $('.listo').classList.add('on'); });
+  en(t + 4500, iniciarAnimacion);
+}
+
+// -------------------------------------------------------------------- caso
+function cargarCaso() {
+  const c = CASOS[caso];
+  revelado = false;
+  respuestas = c.criterios.map(() => null);
+  $('#caso').classList.remove('revelado');
+  $('#progreso-txt').textContent = `Caso ${caso + 1} de ${CASOS.length}`;
+  $$('.progreso i').forEach((x, i) => x.classList.toggle('on', i <= caso));
+  $('#c-proyecto').textContent = c.proyecto;
+  $('#c-tarea').textContent = c.tarea;
+  $('#c-quien').textContent = c.quien;
+  $('#c-entrega').textContent = `«${c.entrega}»`;
+  $('#c-veredicto').classList.remove('on');
+  $('#c-nota').textContent = 'Tocá una opción en cada criterio.';
+  const boton = $('#c-boton');
+  boton.textContent = 'Ver qué dijo el juez';
+  boton.disabled = true;
+
+  const lista = $('#c-criterios');
+  lista.innerHTML = '';
+  c.criterios.forEach((cr, i) => {
+    const fila = document.createElement('div');
+    fila.className = 'tarjeta criterio';
+    fila.innerHTML = `
+      <div class="texto"><code>AC-${i + 1}</code><span></span></div>
+      <div class="opciones">
+        ${['pass', 'fail', 'unverifiable'].map((v) => `<button class="op" data-v="${v}">${ETIQUETA[v]}</button>`).join('')}
+      </div>
+      <div class="explica"></div>`;
+    fila.querySelector('.texto span').textContent = cr.texto;
+    fila.querySelectorAll('.op').forEach((b) => b.addEventListener('click', () => {
+      if (revelado) return;
+      respuestas[i] = b.dataset.v;
+      fila.querySelectorAll('.op').forEach((x) => x.classList.toggle('elegida', x === b));
+      const faltan = respuestas.filter((r) => r === null).length;
+      boton.disabled = faltan > 0;
+      $('#c-nota').textContent = faltan > 0
+        ? `Te ${faltan === 1 ? 'falta 1 criterio' : `faltan ${faltan} criterios`}.`
+        : 'Listo. ¿Coincidirás con el juez?';
+    }));
+    lista.appendChild(fila);
+  });
+  mostrar('caso');
+}
+
+function revelar() {
+  const c = CASOS[caso];
+  revelado = true;
+  $('#caso').classList.add('revelado');
+  let bien = 0;
+  $$('#c-criterios .criterio').forEach((fila, i) => {
+    const cr = c.criterios[i];
+    const coincide = respuestas[i] === cr.juez;
+    if (coincide) bien += 1;
+    fila.querySelector(`.op[data-v="${cr.juez}"]`).classList.add('juez');
+    fila.querySelector('.explica').innerHTML = coincide
+      ? `<b class="si">Coincidiste.</b> `
+      : `<b class="no">El juez dijo «${NOMBRE[cr.juez]}».</b> `;
+    fila.querySelector('.explica').append(cr.por);
+  });
+  aciertos += bien;
+  total += c.criterios.length;
+
+  const v = VEREDICTO[c.veredicto];
+  const caja = $('#c-veredicto');
+  caja.style.borderColor = v.color;
+  $('#c-v-tipo').textContent = `Veredicto: ${v.tipo}`;
+  $('#c-v-tipo').style.color = v.color;
+  $('#c-v-por').textContent = c.porque;
+  caja.classList.add('on');
+
+  $('#c-nota').textContent = `Coincidiste en ${bien} de ${c.criterios.length} criterios.`;
+  $('#c-boton').textContent = caso + 1 < CASOS.length ? 'Siguiente entrega →' : 'Ver mi resultado →';
+}
+
+function terminar() {
+  $('#f-aciertos').textContent = aciertos;
+  $('#f-total').textContent = `de ${total} coincidencias con el juez`;
+  const proporcion = total === 0 ? 0 : aciertos / total;
+  $('#f-mensaje').textContent =
+    proporcion === 1 ? 'Pensás exactamente como el juez.' :
+    proporcion >= 0.7 ? 'Muy cerca del juez. Se te escapó algún detalle.' :
+    'El juez es más exigente de lo que parece: mira la evidencia, no las palabras lindas.';
+  mostrar('final');
+}
+
+// ---------------------------------------------------------------- botones
+$('#atraer').addEventListener('click', () => { pantallaCompleta(); mostrar('intro'); });
+$('#empezar').addEventListener('click', () => { caso = 0; aciertos = 0; total = 0; cargarCaso(); });
+$('#c-boton').addEventListener('click', () => {
+  if (!revelado) { revelar(); return; }
+  if (caso + 1 < CASOS.length) { caso += 1; cargarCaso(); } else { terminar(); }
+});
+$('#otra-vez').addEventListener('click', () => mostrar('atraer'));
+
+iniciarAnimacion();
+</script>
+</body>
+</html>
