@@ -29,6 +29,7 @@ export const ORDEN = {
     'db/migrations/0007_escalada.sql',
     'db/migrations/0008_qa_cola.sql',
     'db/migrations/0009_estado_proyecto.sql',
+    'db/migrations/0010_recuperar_tareas.sql',
   ],
   'sql/02-datos-prueba.sql': ['db/seeds/01_skills.sql', 'db/seeds/02_datos_demo.sql'],
 } as const satisfies Record<string, readonly string[]>;

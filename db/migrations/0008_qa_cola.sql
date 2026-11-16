@@ -147,6 +147,17 @@ begin
       'task_id',      d.task_id,
       'provider_id',  d.provider_id,
       'version',      d.version,
+      -- Intento de ESTE proveedor, no versión de la tarea. Cuando una tarea vuelve al
+      -- mercado (0010), el proveedor nuevo sigue numerando versiones donde quedó el
+      -- anterior: si la política contara por versión, su primera entrega ya sería «el
+      -- último intento» y se le rechazaría sin haberle pedido nunca un cambio.
+      'attempt',      (
+        select count(*)
+          from public.deliverables a
+         where a.task_id = d.task_id
+           and a.provider_id = d.provider_id
+           and a.version <= d.version
+      ),
       'summary',      d.summary,
       'content',      d.content,
       'artifacts',    d.artifacts,

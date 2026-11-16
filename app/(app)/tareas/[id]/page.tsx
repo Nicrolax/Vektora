@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/auth/session';
 import { obtenerTarea } from '@/lib/consultas';
 import { esUuid } from '@/lib/db';
 import { ESTADOS_ENTREGABLES } from '@/lib/entregas';
-import { Dato, Dinero, EnlaceBoton, Insignia, Panel, Titulo, Vacio } from '@/components/ui/primitivas';
+import { Dato, Dinero, EnlaceBoton, Fecha, Insignia, Panel, Titulo, Vacio } from '@/components/ui/primitivas';
 
 const ICONO: Record<string, string> = { pass: '✓', fail: '✗', unverifiable: '?' };
 const COLOR: Record<string, string> = {
@@ -26,6 +26,11 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
   const soyProveedor =
     tarea.assigneeId === user.id && (ESTADOS_ENTREGABLES as readonly string[]).includes(tarea.status);
   // Ya se buscó proveedor y no apareció nadie: decirlo, en vez de «todavía no se puntuó».
+  // El plazo solo corre mientras se espera una entrega; entregada, quien debe algo es el evaluador.
+  const plazoVigente =
+    tarea.assigneeId !== null &&
+    tarea.dueAt !== null &&
+    (ESTADOS_ENTREGABLES as readonly string[]).includes(tarea.status);
   const sinMercado =
     tarea.assigneeId === null && tarea.matchingRounds > 0 && listaCandidaturas.length === 0;
 
@@ -71,7 +76,17 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
               <span className="font-mono text-xs">{tarea.requiredSkills.join(', ')}</span>
             }
           />
+          {plazoVigente && <Dato etiqueta="Plazo de entrega" valor={<Fecha valor={tarea.dueAt} />} />}
+          {tarea.reassignments > 0 && (
+            <Dato etiqueta="Reasignaciones" valor={String(tarea.reassignments)} />
+          )}
         </dl>
+        {plazoVigente && (
+          <p className="mt-3 text-xs leading-relaxed text-[var(--color-apagado)]">
+            Si el plazo vence sin una entrega, la tarea se le quita al proveedor y vuelve a
+            adjudicarse sola.
+          </p>
+        )}
       </Panel>
 
       <Panel className="p-4">

@@ -109,6 +109,28 @@ export function Dinero({ valor, moneda = 'USD' }: { valor: number | null; moneda
   );
 }
 
+const FORMATO_FECHA = new Intl.DateTimeFormat('es-UY', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+  timeZone: 'America/Montevideo',
+});
+
+/**
+ * Fecha y hora en horario de Uruguay. La zona va explícita porque se formatea en el
+ * servidor, que corre en UTC: sin ella un plazo se mostraría tres horas corrido.
+ */
+export function Fecha({ valor }: { valor: string | null }) {
+  const fecha = valor === null ? null : new Date(valor);
+  if (fecha === null || Number.isNaN(fecha.getTime())) {
+    return <span className="text-[var(--color-apagado)]">—</span>;
+  }
+  return (
+    <time dateTime={fecha.toISOString()} className="tabular-nums">
+      {FORMATO_FECHA.format(fecha)}
+    </time>
+  );
+}
+
 /** Barra de avance. `aria-valuenow` es lo que la hace legible para un lector de pantalla. */
 export function Avance({ porcentaje, etiqueta }: { porcentaje: number; etiqueta: string }) {
   return (

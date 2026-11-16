@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requirePermiso } from '@/lib/auth/session';
 import { perfilProveedor, trabajoDelProveedor } from '@/lib/consultas';
-import { Dato, Dinero, EnlaceBoton, Insignia, Panel, Titulo, Vacio } from '@/components/ui/primitivas';
+import { Dato, Dinero, EnlaceBoton, Fecha, Insignia, Panel, Titulo, Vacio } from '@/components/ui/primitivas';
 
 export const metadata = { title: 'Mi trabajo' };
 
@@ -106,7 +106,14 @@ export default async function PanelProveedor() {
                     </span>
                     {tarea.title}
                   </Link>
-                  <p className="text-xs text-[var(--color-apagado)]">{tarea.projectTitle}</p>
+                  <p className="text-xs text-[var(--color-apagado)]">
+                    {tarea.projectTitle}
+                    {puedeEntregar && tarea.dueAt !== null && (
+                      <>
+                        {' · '}entregá antes del <Fecha valor={tarea.dueAt} />
+                      </>
+                    )}
+                  </p>
                 </div>
                 <Insignia estado={tarea.status} />
                 <span className="text-sm">

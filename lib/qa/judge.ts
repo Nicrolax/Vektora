@@ -137,7 +137,7 @@ export class QaJudge {
 
       // --- Caminos que no necesitan modelo ------------------------------------------------
       if (!hasSubmittedEvidence(claim.deliverable)) {
-        const decision = decideEmptySubmission(this.config, claim.deliverable.version);
+        const decision = decideEmptySubmission(this.config, claim.deliverable.attempt);
         return await this.finish({ ...withClaim, decision, skippedAi: true }, restore, dryRun);
       }
 
@@ -147,7 +147,7 @@ export class QaJudge {
         const decision = decideVerdict({
           criteria: [],
           verdicts: [],
-          attempt: claim.deliverable.version,
+          attempt: claim.deliverable.attempt,
           summary:
             'La tarea no tiene criterios de aceptación interpretables, así que no hay nada ' +
             'contra lo que evaluar el entregable. Hay que definirlos antes de poder aceptarlo.',
@@ -200,7 +200,7 @@ export class QaJudge {
       const decision = decideVerdict({
         criteria: parsed.criteria,
         verdicts: response.data.criteria,
-        attempt: claim.deliverable.version,
+        attempt: claim.deliverable.attempt,
         summary: response.data.summary,
         blockingIssues: response.data.blockingIssues,
         config: this.config,

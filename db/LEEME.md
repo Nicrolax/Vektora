@@ -14,7 +14,7 @@ el nombre vive en `profiles`. Aplicar aquel archivo habría roto la base.
 
 ## Orden de despliegue
 
-Ya concatenado en `sql/01-crear-tablas.sql` (1–9) y `sql/02-datos-prueba.sql` (10–11) con
+Ya concatenado en `sql/01-crear-tablas.sql` (1–10) y `sql/02-datos-prueba.sql` (11–12) con
 `npm run sql:build`. Se aplica con `npm run sql:aplicar` (o solo, por initdb, en Docker).
 
 | # | Archivo | Contenido |
@@ -28,8 +28,9 @@ Ya concatenado en `sql/01-crear-tablas.sql` (1–9) y `sql/02-datos-prueba.sql` 
 | 7 | `migrations/0007_escalada.sql` | `matching_rounds`, `bump_matching_round`, `usage_events`, `consume_quota`, `quota_usage` |
 | 8 | `migrations/0008_qa_cola.sql` | `deliverables.qa_claimed_at`, `qa_claim_timeout`; reemplaza `claim_deliverable_for_qa`, `apply_qa_verdict` y `pending_qa_deliverables` de la 0005 |
 | 9 | `migrations/0009_estado_proyecto.sql` | `refresh_project_status` y sus disparadores: el proyecto pasa solo a `active` y a `completed` |
-| 10 | `seeds/01_skills.sql` | Catálogo semilla: 30 skills en 9 categorías |
-| 11 | `seeds/02_datos_demo.sql` | Datos de la demo: 6 cuentas (contraseña pública), 2 proyectos, 8 tareas, candidaturas, entrega, reputación |
+| 10 | `migrations/0010_recuperar_tareas.sql` | `project_tasks.reassignments`, `recover_stalled_task`: plazo de entrega y vuelta al mercado de tareas vencidas o fallidas |
+| 11 | `seeds/01_skills.sql` | Catálogo semilla: 30 skills en 9 categorías |
+| 12 | `seeds/02_datos_demo.sql` | Datos de la demo: 6 cuentas (contraseña pública), 2 proyectos, 8 tareas, candidaturas, entrega, reputación |
 | — | `npm run skills:embed` | Vectoriza el catálogo (necesita `GOOGLE_AI_API_KEY`). Sin esto no hay resolución semántica |
 
 (La `0006_realtime.sql` de Supabase se eliminó: la vista del grafo ahora sondea cada 15 s.)

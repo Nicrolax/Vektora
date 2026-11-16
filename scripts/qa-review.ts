@@ -67,7 +67,8 @@ function report(result: JudgeResult): void {
 
   console.log('\n[1] Entregable');
   line('tarea:', `${claim.task.code} · ${claim.task.title}`);
-  line('versión (intento):', String(claim.deliverable.version));
+  line('versión:', String(claim.deliverable.version));
+  line('intento del proveedor:', String(claim.deliverable.attempt));
   line('estado previo:', claim.previousStatus);
   line('criterios:', String(result.criteria.length));
   if (result.malformedCriteria > 0) {

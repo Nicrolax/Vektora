@@ -58,6 +58,8 @@ const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
     'embedding', 'embedding_model', 'embedding_updated_at',
     // FASE 7 (0007): el emparejador lo lee en cada ronda para decidir si escala.
     'matching_rounds',
+    // FASE 8 (0010): plazo de entrega y vueltas al mercado; los escribe el vigilante.
+    'due_at', 'reassignments',
   ],
   skills: ['slug', 'name', 'category', 'is_active', 'embedding', 'embedding_model'],
   // Lo que escribe el AI Judge. Si falta una, el veredicto revienta DESPUÉS de haber
@@ -81,6 +83,7 @@ const FUNCTIONS = [
   'match_task_candidates', 'apply_task_matches', 'accept_task_application', 'skill_similarity_pairs',
   'claim_deliverable_for_qa', 'release_deliverable_qa', 'apply_qa_verdict', 'pending_qa_deliverables',
   'bump_matching_round', 'consume_quota', 'quota_usage', 'is_admin',
+  'recover_stalled_task',
 ] as const;
 
 let failures = 0;

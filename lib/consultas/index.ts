@@ -216,6 +216,10 @@ export interface TareaDetalle {
   assigneeNombre: string | null;
   /** Rondas de emparejamiento sin adjudicar (vuelve a 0 al asignarse). */
   matchingRounds: number;
+  /** Plazo de entrega vigente. Solo vale mientras la tarea espera una entrega. */
+  dueAt: string | null;
+  /** Veces que la tarea se le quitó a un proveedor y volvió al mercado. */
+  reassignments: number;
 }
 
 export interface CandidaturaVista {
@@ -303,10 +307,13 @@ export async function obtenerTarea(
       assignee_id: string | null;
       assignee_nombre: string | null;
       matching_rounds: number;
+      due_at: string | null;
+      reassignments: number;
     }>(
       `select t.id, t.project_id, p.title as project_title, p.objective as project_objective,
               t.code, t.title, t.description, t.acceptance_criteria, t.required_skills, t.status,
-              t.budget, t.estimated_hours, t.assignee_id, t.matching_rounds,
+              t.budget, t.estimated_hours, t.assignee_id, t.matching_rounds, t.due_at,
+              t.reassignments,
               coalesce(pr.display_name, pr.full_name) as assignee_nombre
          from public.project_tasks t
          join public.projects p on p.id = t.project_id
@@ -373,6 +380,8 @@ export async function obtenerTarea(
         assigneeId: fila.assignee_id,
         assigneeNombre: fila.assignee_nombre,
         matchingRounds: fila.matching_rounds,
+        dueAt: fila.due_at,
+        reassignments: fila.reassignments,
       },
       candidaturas: candidaturas.map((c) => ({
         id: c.id,
@@ -541,6 +550,8 @@ export interface TareaAsignada {
   status: string;
   budget: number | null;
   projectTitle: string;
+  /** Plazo de entrega vigente. Solo vale mientras la tarea espera una entrega. */
+  dueAt: string | null;
 }
 
 export interface EventoReputacion {
@@ -562,8 +573,9 @@ export async function trabajoDelProveedor(
       status: string;
       budget: PgNumeric | null;
       project_title: string;
+      due_at: string | null;
     }>(
-      `select t.id, t.code, t.title, t.status, t.budget, p.title as project_title
+      `select t.id, t.code, t.title, t.status, t.budget, p.title as project_title, t.due_at
          from public.project_tasks t
          join public.projects p on p.id = t.project_id
         where t.assignee_id = auth.uid()
@@ -591,6 +603,7 @@ export async function trabajoDelProveedor(
         status: t.status,
         budget: toNumber(t.budget),
         projectTitle: t.project_title,
+        dueAt: t.due_at,
       })),
       eventos: eventos.map((e) => ({
         id: e.id,

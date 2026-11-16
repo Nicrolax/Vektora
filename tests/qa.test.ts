@@ -36,6 +36,7 @@ function claim(overrides: Partial<QaClaim> = {}): QaClaim {
       taskId: 't-1',
       providerId: 'u-1',
       version: 1,
+      attempt: 1,
       summary: 'Documento de alcance',
       content: 'Objetivos, entregables y exclusiones.',
       artifacts: [],
@@ -215,6 +216,36 @@ describe('el juez no aprueba lo que no puede comprobar', () => {
     expect(calls).toHaveLength(0);
     expect(result.malformedCriteria).toBe(1);
     expect(result.decision?.qaStatus).toBe('revision_requested');
+  });
+
+  it('los intentos se cuentan por proveedor, no por versión de la tarea', async () => {
+    // Tarea reasignada: el proveedor anterior dejó tres versiones y este entrega la cuarta,
+    // que es SU primera. Contando por versión ya estaría en el último intento y un solo
+    // criterio flojo cerraría la tarea sin haberle pedido nunca un cambio.
+    const repository = new FakeRepository(
+      claim({ deliverable: { ...claim().deliverable, version: 4, attempt: 1 } }),
+    );
+    const { client } = fakeAi(verdicts(['pass', 'fail']));
+    const result = await new QaJudge({ repository, ai: client, config }).judge({
+      deliverableId: 'd-1',
+    });
+
+    expect(result.decision?.qaStatus).toBe('revision_requested');
+    expect(result.decision?.explanation.attempt).toBe(1);
+    expect(result.decision?.explanation.escalated).toBe(false);
+  });
+
+  it('el último intento del proveedor sí cierra la tarea', async () => {
+    const repository = new FakeRepository(
+      claim({ deliverable: { ...claim().deliverable, version: 4, attempt: config.maxAttempts } }),
+    );
+    const { client } = fakeAi(verdicts(['pass', 'fail']));
+    const result = await new QaJudge({ repository, ai: client, config }).judge({
+      deliverableId: 'd-1',
+    });
+
+    expect(result.decision?.qaStatus).toBe('rejected');
+    expect(result.decision?.taskStatus).toBe('failed');
   });
 });
 

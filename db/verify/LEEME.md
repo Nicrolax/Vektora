@@ -17,7 +17,7 @@ un servicio `pgvector/pgvector:pg16` vacío. Para hacerlo a mano, con Docker:
 ```bash
 docker run -d --name vk-verify -e POSTGRES_PASSWORD=verify -p 5433:5432 pgvector/pgvector:pg16
 P="docker exec -i vk-verify psql -U postgres -d postgres -v ON_ERROR_STOP=1"
-for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql          db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql          db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/migrations/0008_qa_cola.sql db/migrations/0009_estado_proyecto.sql db/seeds/01_skills.sql          db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql          db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql db/verify/06_qa_cola.sql db/verify/07_estado_proyecto.sql; do
+for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql          db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql          db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/migrations/0008_qa_cola.sql db/migrations/0009_estado_proyecto.sql db/migrations/0010_recuperar_tareas.sql db/seeds/01_skills.sql          db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql          db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql db/verify/06_qa_cola.sql db/verify/07_estado_proyecto.sql db/verify/08_recuperar_tareas.sql; do
   $P < "$f" || break
 done
 docker rm -f vk-verify
@@ -157,3 +157,23 @@ Se ejecuta con `$P -f db/verify/07_estado_proyecto.sql`, tras la migración
   la ignoraría para siempre.
 - El borrado en cascada de un proyecto no tropieza con el disparador de tareas.
 - `anon` y `authenticated` no tienen EXECUTE sobre `refresh_project_status`.
+
+## FASE 8 — plazos de entrega y reapertura de tareas (13 comprobaciones más)
+
+Se ejecuta con `$P -f db/verify/08_recuperar_tareas.sql`, tras la migración
+`0010_recuperar_tareas.sql`. Cada comprobación avisa con `FALLO` u `OK`.
+
+- Con el **plazo vigente** solo se escribe `due_at` (adjudicación + la ventana que decide
+  `lib/matching`); la tarea sigue con su proveedor.
+- Una tarea **entregada no vence**: mientras espera veredicto, quien debe algo es el evaluador.
+- **Plazo vencido**: la tarea vuelve a `ready` sin proveedor, con una reasignación más. La
+  candidatura de quien la tenía pasa a `expired` y las que habían perdido vuelven a competir.
+  El incumplimiento se cobra **una vez** (`deadline_missed`) y queda en `audit_logs`.
+- Quien dejó vencer la tarea **no vuelve a recibirla**: `match_task_candidates` lo excluye.
+- El **intento del juez se cuenta por proveedor**: la primera entrega de un proveedor nuevo es
+  intento 1 aunque sea la versión 2 de la tarea.
+- Un **pedido de cambios abre un plazo nuevo**: el reloj corre desde el último veredicto.
+- Una tarea **`failed` vuelve al mercado** sin multa de plazo (la reputación ya la movió el juez).
+- **Agotadas las reasignaciones, el proyecto pasa a `failed`** con fecha y auditoría, y no se
+  vuelve a tocar.
+- `anon` y `authenticated` no tienen EXECUTE sobre `recover_stalled_task`.

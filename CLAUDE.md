@@ -28,12 +28,13 @@ documentación para la entrega y preparación de la demo.
 
 > **Cualquier salida que asuma una persona que no existe es un punto muerto.**
 
-Apareció ocho veces: un criterio de aceptación que pedía la firma del cliente (FASE 3), un
+Apareció diez veces: un criterio de aceptación que pedía la firma del cliente (FASE 3), un
 umbral de adjudicación inalcanzable (FASE 4), cerrar una tarea con un solo veredicto no
-determinista (FASE 5), una tarea esperando para siempre un candidato mejor (FASE 7), y cuatro
+determinista (FASE 5), una tarea esperando para siempre un candidato mejor (FASE 7), y seis
 en la FASE 8: un entregable con revisión pedida que el juez volvía a evaluar en cada corrida,
 un turno de evaluación que nadie devolvía si el proceso moría, una cola de emparejamiento
-tomada por tareas sin proveedores y un proyecto que nunca pasaba a completado.
+tomada por tareas sin proveedores, un proyecto que nunca pasaba a completado, una tarea
+fallida que congelaba a sus dependientes y una tarea adjudicada que nadie entregaba.
 **Ninguno lanza un error.** Antes de dar por bueno un cambio, preguntate: ¿hay algún estado
 del que el sistema no salga solo?
 
@@ -111,7 +112,7 @@ app/acciones/       Server Actions: proyectos, proveedor, entregas (únicos punt
 app/api/cron/       emparejar y evaluar (los dispara GitHub Actions; en dev, npm run cron)
 app/health/         /health: 200 si app y base responden
 components/         grafo/, ui/, estados.ts (traducción ÚNICA estado → etiqueta + color)
-db/                 schema.sql, migrations/0002–0009, seeds/, verify/
+db/                 schema.sql, migrations/0002–0010, seeds/, verify/
 scripts/            CLIs del ciclo autónomo
 tests/              Vitest
 docs/               Documentación evaluable
@@ -149,7 +150,7 @@ testeable; SQL hace solo lo que solo SQL puede hacer (vecinos vectoriales, atomi
 - **La base desplegada es la fuente de verdad.** Si código y documentación discrepan sobre un
   identificador, se consulta la base (`db/dump-schema.sql`). Reconstruir SQL desde descripciones
   ya rompió la base una vez.
-- Orden de despliegue: `db/schema.sql` → `db/migrations/0002` … `0009` → `db/seeds/`.
+- Orden de despliegue: `db/schema.sql` → `db/migrations/0002` … `0010` → `db/seeds/`.
 - Toda migración es **idempotente** y empieza con `set search_path = public, extensions;`
   (sin eso `uuid_generate_v4()` no se resuelve).
 - `db/00_plataforma.sql` reemplaza a Supabase (esquema `auth`, `auth.users.password_hash`,
@@ -166,7 +167,7 @@ testeable; SQL hace solo lo que solo SQL puede hacer (vecinos vectoriales, atomi
   `reputation_events.user_id`, `provider_profiles.hourly_rate_usd`, `deliverables.qa_status`,
   `reviews.source`, `audit_logs.entity_type/entity_id`, `project_dag(uuid)` es **función**.
   `ai_run_status` no tiene `cancelled` (sí `timeout`); la operación del juez es `qa_judge`.
-- Verificación de comportamiento SQL: `db/verify/` (archivos 01–07) sobre
+- Verificación de comportamiento SQL: `db/verify/` (archivos 01–08) sobre
   una base local desechable. **No escribir SQL sin ejecutarlo.**
 
 ## Variables de entorno relevantes
@@ -183,6 +184,8 @@ Ver `.env.example` / `lib/*/config.ts` para la lista completa. Las que tienen hi
 | `VEKTORA_MATCH_AUTO_ASSIGN_MIN` | 0.50 | Derivado del techo de un proveedor nuevo |
 | `VEKTORA_MATCH_ESCALATE_AFTER_ROUNDS` | 4 | Rondas, no tiempo, para poder demostrarlo |
 | `VEKTORA_QA_MIN_ATTEMPTS_BEFORE_REJECT` | 2 | Un solo veredicto no puede cerrar una tarea |
+| `VEKTORA_DELIVERY_HOURS_FACTOR` / `_MIN_HOURS` / `_MAX_HOURS` | 6 / 48 / 720 | Plazo de entrega; **no medidos**, punto de partida |
+| `VEKTORA_TASK_MAX_REASSIGNMENTS` | 2 | Vueltas al mercado antes de dar el proyecto por fallido |
 
 Los umbrales son **medidos, no puestos a ojo**. No cambiarlos sin volver a medir
 (`npm run skills:calibrate`) y sin revisar las pruebas que los fijan.

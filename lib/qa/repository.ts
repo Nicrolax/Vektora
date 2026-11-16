@@ -20,7 +20,10 @@ export interface QaClaim {
     id: string;
     taskId: string;
     providerId: string;
+    /** Versión del entregable dentro de la TAREA (la numera la base, entre todos los proveedores). */
     version: number;
+    /** Entrega número N de ESTE proveedor para la tarea: es lo que cuenta la política de intentos. */
+    attempt: number;
     summary: string | null;
     content: string | null;
     artifacts: unknown[];
@@ -179,6 +182,7 @@ export class PostgresQaRepository implements QaRepository {
           taskId: String(deliverable['task_id']),
           providerId: String(deliverable['provider_id']),
           version: Number(deliverable['version'] ?? 1),
+          attempt: Number(deliverable['attempt'] ?? deliverable['version'] ?? 1),
           summary: asString(deliverable['summary']),
           content: asString(deliverable['content']),
           artifacts: asArray(deliverable['artifacts']),

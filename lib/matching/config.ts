@@ -117,6 +117,40 @@ export const MatchingConfigSchema = z
      * el disparador cuatro veces. Medido en horas, la escalada no se podría mostrar.
      */
     VEKTORA_MATCH_ESCALATE_AFTER_ROUNDS: z.coerce.number().int().min(1).max(100).default(4),
+
+    /**
+     * Plazo de entrega: horas de reloj que tiene el proveedor desde la adjudicación (o desde
+     * el último veredicto sobre una entrega suya) antes de que la tarea vuelva al mercado.
+     *
+     *     plazo = estimated_hours × FACTOR, acotado a [MIN, MAX]
+     *
+     * `estimated_hours` son horas de TRABAJO; el factor las pasa a horas de reloj. Con 6,
+     * una tarea de 8 horas da 48 de plazo: quien le dedica cuatro horas por día llega con
+     * margen. El mínimo evita plazos imposibles en tareas chicas y el máximo, que una
+     * estimación desmedida deje una tarea trabada un trimestre.
+     *
+     * A diferencia de los umbrales del ranking, estos valores NO están medidos: no hay
+     * historial de entregas reales del que derivarlos. Son un punto de partida razonable y
+     * hay que revisarlos cuando lo haya.
+     *
+     * Para mostrarlo en una demostración se bajan por entorno (por ejemplo FACTOR=0 y
+     * MIN=0.02, poco más de un minuto), igual que la escalada se muestra contando rondas.
+     */
+    VEKTORA_DELIVERY_HOURS_FACTOR: z.coerce.number().min(0).max(100).default(6),
+    VEKTORA_DELIVERY_MIN_HOURS: z.coerce.number().min(0).max(8760).default(48),
+    VEKTORA_DELIVERY_MAX_HOURS: z.coerce.number().min(0).max(8760).default(720),
+
+    /**
+     * Veces que una tarea puede volver al mercado (rechazo definitivo o plazo vencido)
+     * antes de dar el proyecto por fallido. Con 2, tres proveedores distintos tienen su
+     * oportunidad. Sin tope, una tarea imposible rotaría para siempre entre proveedores,
+     * cobrándole reputación a cada uno; con tope, el sistema llega solo a un final que dice
+     * la verdad: el resultado no se pudo conseguir.
+     */
+    VEKTORA_TASK_MAX_REASSIGNMENTS: z.coerce.number().int().min(0).max(20).default(2),
+
+    /** Reputación que cuesta dejar vencer un plazo. Igual que una tarea fallida del juez. */
+    VEKTORA_DEADLINE_MISSED_DELTA: z.coerce.number().min(0).max(100).default(8),
   })
   .superRefine((value, ctx) => {
     const sum =
@@ -139,6 +173,13 @@ export const MatchingConfigSchema = z
         message: 'el techo de recalibración debe ser mayor que el suelo',
       });
     }
+    if (value.VEKTORA_DELIVERY_MAX_HOURS < value.VEKTORA_DELIVERY_MIN_HOURS) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['VEKTORA_DELIVERY_MAX_HOURS'],
+        message: 'el plazo máximo de entrega no puede ser menor que el mínimo',
+      });
+    }
   });
 
 export type MatchingEnv = z.infer<typeof MatchingConfigSchema>;
@@ -155,6 +196,10 @@ export interface MatchingConfig {
   shortlist: number;
   autoAssignMin: number;
   escalateAfterRounds: number;
+  /** Plazo de entrega en horas de reloj: `estimated_hours × hoursFactor`, acotado. */
+  delivery: { hoursFactor: number; minHours: number; maxHours: number };
+  maxReassignments: number;
+  deadlineMissedDelta: number;
 }
 
 export class MatchingConfigError extends ConfiguracionError {
@@ -198,6 +243,13 @@ export function loadMatchingConfig(
     shortlist: value.VEKTORA_MATCH_SHORTLIST,
     autoAssignMin: value.VEKTORA_MATCH_AUTO_ASSIGN_MIN,
     escalateAfterRounds: value.VEKTORA_MATCH_ESCALATE_AFTER_ROUNDS,
+    delivery: {
+      hoursFactor: value.VEKTORA_DELIVERY_HOURS_FACTOR,
+      minHours: value.VEKTORA_DELIVERY_MIN_HOURS,
+      maxHours: value.VEKTORA_DELIVERY_MAX_HOURS,
+    },
+    maxReassignments: value.VEKTORA_TASK_MAX_REASSIGNMENTS,
+    deadlineMissedDelta: value.VEKTORA_DEADLINE_MISSED_DELTA,
   };
 }
 
