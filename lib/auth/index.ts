@@ -8,11 +8,21 @@
 
 import { getDb } from '@/lib/db';
 import { PostgresCuentasRepository } from './repository';
+import { getLimitadorAcceso } from './limites';
 import { AuthService } from './servicio';
 
 export { COSTE_BCRYPT, costeDe, hashearContrasena, validarContrasena, verificarContrasena } from './password';
 export { emitirToken, secretoDeSesion, verificarToken, DURACION_SESION_SEGUNDOS } from './token';
 export type { ContenidoToken } from './token';
+export {
+  LimitadorAcceso,
+  POLITICA_ACCESO,
+  VentanaDeslizante,
+  getLimitadorAcceso,
+  ipDeCabeceras,
+  minutosDe,
+} from './limites';
+export type { Bloqueo, PoliticaAcceso, Regla } from './limites';
 export { NOMBRE_COOKIE, debeSerSegura, opcionesCookie } from './cookie';
 export {
   MOTIVO_PERMISO,
@@ -29,6 +39,7 @@ export type { Cuenta, CuentaConHash, CuentasRepository, NuevaCuenta } from './re
 export { AuthService, MENSAJE_CREDENCIALES, normalizarCorreo } from './servicio';
 export type { UsuarioAutenticado } from './servicio';
 
+/** Servicio de la aplicación: comparte el limitador del proceso entre peticiones. */
 export function crearAuthService(): AuthService {
-  return new AuthService(new PostgresCuentasRepository(getDb()));
+  return new AuthService(new PostgresCuentasRepository(getDb()), undefined, getLimitadorAcceso());
 }

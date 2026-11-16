@@ -3,7 +3,7 @@
 # En cada push y pull request:
 #   · verificar — tipos, pruebas unitarias, que sql/ esté al día con db/, y build de Next.
 #   · base      — contra un PostgreSQL 16 + pgvector real: la suite de comportamiento de
-#                 db/verify (01–05), los scripts de sql/ aplicados DOS veces (idempotencia),
+#                 db/verify (01–09), los scripts de sql/ aplicados DOS veces (idempotencia),
 #                 `npm run db:check` y las pruebas de integración (login BCrypt, RLS,
 #                 transacción con ROLLBACK, consultas preparadas).
 name: CI
@@ -130,10 +130,12 @@ jobs:
                    db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql \
                    db/migrations/0005_qa.sql db/migrations/0007_escalada.sql \
                    db/migrations/0008_qa_cola.sql db/migrations/0009_estado_proyecto.sql \
-                   db/migrations/0010_recuperar_tareas.sql db/seeds/01_skills.sql \
+                   db/migrations/0010_recuperar_tareas.sql db/migrations/0011_tope_global.sql \
+                   db/seeds/01_skills.sql \
                    db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql \
                    db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql db/verify/06_qa_cola.sql \
-                   db/verify/07_estado_proyecto.sql db/verify/08_recuperar_tareas.sql; do
+                   db/verify/07_estado_proyecto.sql db/verify/08_recuperar_tareas.sql \
+                   db/verify/09_tope_global.sql; do
             echo "::group::$f"
             psql -d verificacion -v ON_ERROR_STOP=1 -q -f "$f" | tee -a verify.log
             echo "::endgroup::"

@@ -70,6 +70,12 @@ export class AuthError extends VektoraError {
   readonly estadoHttp = 401;
 }
 
+/** Demasiados intentos seguidos. El mensaje dice cuánto esperar. */
+export class LimiteIntentosError extends VektoraError {
+  readonly codigo = 'limite_intentos';
+  readonly estadoHttp = 429;
+}
+
 /** Hay sesión, pero el rol de la cuenta no permite la operación. */
 export class PermisoDenegadoError extends VektoraError {
   readonly codigo = 'permiso_denegado';

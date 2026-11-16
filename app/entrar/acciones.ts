@@ -12,9 +12,10 @@
  * dejaría una cuenta sin perfil.
  */
 
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { Route } from 'next';
-import { crearAuthService, esRol, tienePermiso } from '@/lib/auth';
+import { crearAuthService, esRol, ipDeCabeceras, tienePermiso } from '@/lib/auth';
 import { abrirSesion, cerrarSesionActual } from '@/lib/auth/session';
 import { mensajeParaUsuario } from '@/lib/errores';
 import { validarCorreo } from '@/lib/validacion/entrada';
@@ -38,7 +39,8 @@ function texto(formData: FormData, campo: string): string {
 export async function iniciarSesion(formData: FormData): Promise<void> {
   let destino: Route = '/panel';
   try {
-    const usuario = await crearAuthService().iniciarSesion(texto(formData, 'email'), texto(formData, 'password'));
+    const ip = ipDeCabeceras(await headers());
+    const usuario = await crearAuthService().iniciarSesion(texto(formData, 'email'), texto(formData, 'password'), ip);
     await abrirSesion(usuario.id);
     // Una cuenta solo de proveedor no publica proyectos: entra directo a su trabajo.
     if (!tienePermiso(usuario.role, 'proyectos:crear')) destino = '/proveedor';
@@ -59,12 +61,16 @@ export async function registrarse(formData: FormData): Promise<void> {
 
   let destino: Route = '/panel';
   try {
-    const usuario = await crearAuthService().registrar({
-      email,
-      contrasena: texto(formData, 'password'),
-      role: rol,
-      nombre: texto(formData, 'nombre'),
-    });
+    const ip = ipDeCabeceras(await headers());
+    const usuario = await crearAuthService().registrar(
+      {
+        email,
+        contrasena: texto(formData, 'password'),
+        role: rol,
+        nombre: texto(formData, 'nombre'),
+      },
+      ip,
+    );
     await abrirSesion(usuario.id);
     if (!tienePermiso(usuario.role, 'proyectos:crear')) destino = '/proveedor/alta';
   } catch (error) {

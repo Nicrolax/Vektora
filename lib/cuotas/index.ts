@@ -8,6 +8,13 @@
  * El recuento vive en la base porque es el único sitio donde es atómico: dos pestañas
  * pulsando a la vez no pueden consumir el mismo hueco. Aquí solo se resuelven los límites
  * desde el entorno y se traduce el resultado a un mensaje que la persona entienda.
+ *
+ * Dos límites por acción (FASE 8):
+ *   · por persona — el de siempre;
+ *   · global — la suma de TODAS las cuentas. Sin él, el registro abierto deja esquivar el
+ *     límite por persona con cuentas descartables, y la cuota gratuita de IA es una sola
+ *     para toda la instalación. Solo lo tienen las acciones que disparan una persona y
+ *     cuestan IA; los agentes autónomos nunca pasan por aquí.
  */
 
 import { z } from 'zod';
@@ -15,14 +22,37 @@ import { getDb } from '@/lib/db';
 
 export type AccionLimitada = 'crear_proyecto' | 'alta_proveedor' | 'entregar';
 
+/**
+ * Tope global: un entero (0 deshabilita la acción, igual que en el límite por persona) o
+ * `sin-tope`. Cero nunca significa «sin límite»: confundirlos abriría la puerta justo al
+ * apagar algo.
+ */
+function topeGlobal(porDefecto: number) {
+  return z
+    .union([
+      z.string().trim().toLowerCase().pipe(z.literal('sin-tope')).transform(() => null),
+      z.coerce.number().int().min(0).max(100_000),
+    ])
+    .default(porDefecto);
+}
+
 export const CuotasSchema = z.object({
   /** Lo más caro del sistema: una llamada al modelo más una vectorización por tarea. */
   VEKTORA_QUOTA_PROYECTOS: z.coerce.number().int().min(0).max(1000).default(5),
   VEKTORA_QUOTA_PROYECTOS_HORAS: z.coerce.number().min(0.1).max(720).default(24),
+  /**
+   * Proyectos por ventana entre TODAS las cuentas. 30 por día NO está medido contra el
+   * free tier de Groq ni de Gemini (sus límites cambian y dependen del modelo): es un
+   * punto de partida que deja la demostración holgada y acota el daño de cuentas
+   * descartables. Revisarlo mirando `ai_runs` cuando haya uso real.
+   */
+  VEKTORA_QUOTA_PROYECTOS_GLOBAL: topeGlobal(30),
 
   /** Una vectorización de perfil por alta, más las habilidades que haya que resolver. */
   VEKTORA_QUOTA_PROVEEDOR: z.coerce.number().int().min(0).max(1000).default(10),
   VEKTORA_QUOTA_PROVEEDOR_HORAS: z.coerce.number().min(0.1).max(720).default(24),
+  /** Altas o ediciones de perfil por ventana entre todas las cuentas. Tampoco medido. */
+  VEKTORA_QUOTA_PROVEEDOR_GLOBAL: topeGlobal(60),
 
   /** Entregar es barato, pero cada entrega dispara una evaluación, que no lo es. */
   VEKTORA_QUOTA_ENTREGAS: z.coerce.number().int().min(0).max(1000).default(30),
@@ -31,6 +61,8 @@ export const CuotasSchema = z.object({
 
 export interface LimiteAccion {
   limite: number;
+  /** Suma de todas las cuentas en la ventana. `null` = sin tope global. */
+  limiteGlobal: number | null;
   ventanaHoras: number;
   /** Cómo se llama la acción cuando hay que explicarle al usuario que se pasó. */
   nombre: string;
@@ -52,16 +84,21 @@ export function cargarCuotas(env: Record<string, string | undefined> = process.e
   return {
     crear_proyecto: {
       limite: v.VEKTORA_QUOTA_PROYECTOS,
+      limiteGlobal: v.VEKTORA_QUOTA_PROYECTOS_GLOBAL,
       ventanaHoras: v.VEKTORA_QUOTA_PROYECTOS_HORAS,
       nombre: 'crear proyectos',
     },
     alta_proveedor: {
       limite: v.VEKTORA_QUOTA_PROVEEDOR,
+      limiteGlobal: v.VEKTORA_QUOTA_PROVEEDOR_GLOBAL,
       ventanaHoras: v.VEKTORA_QUOTA_PROVEEDOR_HORAS,
       nombre: 'guardar tu perfil de proveedor',
     },
     entregar: {
       limite: v.VEKTORA_QUOTA_ENTREGAS,
+      // Sin tope global: entregar exige una tarea adjudicada, así que una cuenta
+      // descartable no puede usarlo para gastar IA.
+      limiteGlobal: null,
       ventanaHoras: v.VEKTORA_QUOTA_ENTREGAS_HORAS,
       nombre: 'enviar entregas',
     },
@@ -108,10 +145,10 @@ export async function consumirCuota(
   let fila: Record<string, unknown>;
   try {
     const resultado = await getDb().one<{ r: Record<string, unknown> | null }>(
-      `select public.consume_quota(
+      `select public.consume_capped_quota(
                 p_user_id => $1::uuid, p_action => $2, p_limit => $3::integer,
-                p_window_hours => $4::numeric) as r`,
-      [userId, accion, limite.limite, limite.ventanaHoras],
+                p_global_limit => $4::integer, p_window_hours => $5::numeric) as r`,
+      [userId, accion, limite.limite, limite.limiteGlobal, limite.ventanaHoras],
     );
     fila = resultado?.r ?? {};
   } catch (error) {
@@ -147,14 +184,33 @@ export async function consumirCuota(
     usados,
     limite: limite.limite,
     restantes: 0,
-    mensaje:
-      limite.limite === 0
-        ? `La opción de ${limite.nombre} está deshabilitada en esta instalación.`
-        : `Llegaste al límite de ${limite.limite} para ${limite.nombre} cada ` +
-          `${limite.ventanaHoras} horas. ${enPalabras(disponibleEn, limite.ventanaHoras)} ` +
-          'El límite existe porque cada operación consume cuota de inteligencia artificial ' +
-          'compartida.',
+    mensaje: mensajeDeRechazo(limite, fila['alcance'] === 'global' ? 'global' : 'usuario', disponibleEn),
   };
+}
+
+/** Qué decirle a la persona según cuál de los dos límites se alcanzó. */
+export function mensajeDeRechazo(
+  limite: LimiteAccion,
+  alcance: 'usuario' | 'global',
+  disponibleEn: string | null,
+): string {
+  if (limite.limite === 0 || (alcance === 'global' && limite.limiteGlobal === 0)) {
+    return `La opción de ${limite.nombre} está deshabilitada en esta instalación.`;
+  }
+  const cuando = enPalabras(disponibleEn, limite.ventanaHoras);
+  if (alcance === 'global') {
+    return (
+      `Entre todas las cuentas se alcanzó el máximo de ${limite.limiteGlobal ?? 0} para ` +
+      `${limite.nombre} cada ${limite.ventanaHoras} horas. ${cuando} El límite protege la ` +
+      'cuota gratuita de inteligencia artificial, que es una sola para toda la instalación.'
+    );
+  }
+  return (
+    `Llegaste al límite de ${limite.limite} para ${limite.nombre} cada ` +
+    `${limite.ventanaHoras} horas. ${cuando} ` +
+    'El límite existe porque cada operación consume cuota de inteligencia artificial ' +
+    'compartida.'
+  );
 }
 
 /** Consumo actual sin consumir nada, para avisar antes de que la persona choque. */

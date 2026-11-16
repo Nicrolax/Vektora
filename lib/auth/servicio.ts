@@ -10,11 +10,14 @@
  *     elige: se otorga con `npm run cuenta:admin`.
  *   · Si un hash quedó con un coste menor al actual, se rehace al entrar (la persona no
  *     se entera y la base se actualiza sola).
+ *   · Los intentos fallidos y las altas tienen tope (`limites.ts`). El tope se revisa
+ *     ANTES de comparar la contraseña y cuenta igual exista o no el correo.
  */
 
-import { AuthError, ConflictoError, DatabaseError, ValidacionError } from '@/lib/errores';
+import { AuthError, ConflictoError, DatabaseError, LimiteIntentosError, ValidacionError } from '@/lib/errores';
 import type { UserRole } from '@/lib/db/types';
 import { COSTE_BCRYPT, costeDe, hashearContrasena, verificarContrasena } from './password';
+import { LimitadorAcceso, minutosDe } from './limites';
 import { ROLES_REGISTRABLES } from './permisos';
 import type { CuentasRepository } from './repository';
 
@@ -40,20 +43,40 @@ export class AuthService {
   constructor(
     private readonly cuentas: CuentasRepository,
     private readonly coste: number = COSTE_BCRYPT,
+    /** Sin limitador no hay tope (scripts y pruebas que no lo necesitan). */
+    private readonly limitador: LimitadorAcceso | null = null,
   ) {}
 
-  async iniciarSesion(email: string, contrasena: string): Promise<UsuarioAutenticado> {
+  /** `ip`: la de la petición, o `null` si no se conoce. Solo se usa para el tope. */
+  async iniciarSesion(email: string, contrasena: string, ip: string | null = null): Promise<UsuarioAutenticado> {
+    // La clave del tope es el texto escrito, normalizado lo justo: un correo mal escrito
+    // también cuenta, así no se puede esquivar el tope variando mayúsculas o espacios.
+    const clave = email.trim().toLowerCase();
+    const bloqueo = this.limitador?.bloqueoDeAcceso(clave, ip) ?? null;
+    if (bloqueo !== null) {
+      throw new LimiteIntentosError(
+        'Hubo demasiados intentos fallidos de entrar. Esperá ' +
+          `${minutosDe(bloqueo.esperaMs)} min y volvé a probar; si no recordás la contraseña, ` +
+          'escribile a la administración.',
+      );
+    }
+
     let correo: string;
     try {
       correo = normalizarCorreo(email);
     } catch {
+      this.limitador?.registrarFallo(clave, ip);
       throw new AuthError(MENSAJE_CREDENCIALES);
     }
 
     const cuenta = await this.cuentas.buscarConHashPorCorreo(correo);
     // Se compara SIEMPRE, exista o no la cuenta, para que el tiempo de respuesta no revele nada.
     const valida = await verificarContrasena(contrasena, cuenta?.passwordHash ?? null);
-    if (cuenta === null || !valida) throw new AuthError(MENSAJE_CREDENCIALES);
+    if (cuenta === null || !valida) {
+      this.limitador?.registrarFallo(clave, ip);
+      throw new AuthError(MENSAJE_CREDENCIALES);
+    }
+    this.limitador?.registrarExito(clave, ip);
 
     if (cuenta.status !== 'active') {
       throw new AuthError(
@@ -70,12 +93,22 @@ export class AuthService {
     return { id: cuenta.id, email: cuenta.email, role: cuenta.role };
   }
 
-  async registrar(datos: {
-    email: string;
-    contrasena: string;
-    role: UserRole;
-    nombre?: string | null;
-  }): Promise<UsuarioAutenticado> {
+  async registrar(
+    datos: {
+      email: string;
+      contrasena: string;
+      role: UserRole;
+      nombre?: string | null;
+    },
+    ip: string | null = null,
+  ): Promise<UsuarioAutenticado> {
+    const bloqueo = this.limitador?.bloqueoDeAlta(ip) ?? null;
+    if (bloqueo !== null) {
+      throw new LimiteIntentosError(
+        'Desde esta conexión se crearon muchas cuentas en poco tiempo. Esperá ' +
+          `${minutosDe(bloqueo.esperaMs)} min, o entrá con una cuenta que ya tengas.`,
+      );
+    }
     const correo = normalizarCorreo(datos.email);
     if (!ROLES_REGISTRABLES.includes(datos.role)) {
       throw new ValidacionError('Elegí si querés publicar proyectos, ofrecer tu trabajo o ambas.', 'role');
@@ -88,6 +121,8 @@ export class AuthService {
     const hash = await hashearContrasena(datos.contrasena, this.coste);
     try {
       const id = await this.cuentas.crear({ email: correo, passwordHash: hash, role: datos.role, nombre });
+      // Se cuentan las altas COMPLETADAS: un correo repetido o mal escrito no gasta nada.
+      this.limitador?.registrarAlta(ip);
       return { id, email: correo, role: datos.role };
     } catch (error) {
       if (error instanceof DatabaseError && error.sqlstate === '23505') {

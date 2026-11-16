@@ -305,6 +305,8 @@ También se escaneó la carpeta de trabajo (`--no-git`). Las claves reales apare
 | `X-Powered-By` apagado | `next.config.ts` | No anuncia qué framework ni qué versión usamos |
 | Crons con secreto (`CRON_SECRET`) | `lib/cron/` | Sin el secreto responden 401; sin configurar, 503 (la puerta se cierra, no se abre) |
 | Acciones de terceros fijadas por commit | `seguridad.yml`, `imagen.yml` | Cadena de suministro (sección 3) |
+| **Tope global** de las acciones que gastan IA (crear proyecto: 30 cada 24 h; alta de proveedor: 60) | `db/migrations/0011_tope_global.sql` (`consume_capped_quota`), `lib/cuotas` | La cuota por persona no alcanzaba: crear cuentas nuevas la esquivaba y vaciaba el free tier de Groq y Gemini para todos. El tope cuenta entre todas las cuentas, bajo un candado por acción, y un rechazo no consume |
+| **Límite de intentos de acceso**: 5 fallos por correo e IP cada 15 min, 50 por correo, 100 por IP; 20 altas por IP por hora | `lib/auth/limites.ts`, `lib/auth/servicio.ts` | Frena la fuerza bruta contra una cuenta. Para bloquear una cuenta ajena desde otra conexión hacen falta 50 fallos, no 5 (el par correo + IP es la clave estrecha), y el bloqueo se levanta solo. Solo cuentan los fallos, y igual exista o no el correo: el mensaje no revela qué cuentas hay |
 
 **Contraseñas de demostración públicas:** las 6 cuentas de `db/seeds/02_datos_demo.sql` usan
 `Demo-Vektora-2026`, publicada a propósito para que el docente pueda probar. Es un riesgo
@@ -322,5 +324,8 @@ aceptado y acotado:
 |---|---|---|
 | `'unsafe-inline'` en la CSP | Requisito de la hidratación de Next (sección 4) | React escapa todo; `connect-src`/`form-action` en `'self'` |
 | `DB_SSL=require` **sin** `DB_SSL_CA` cifra pero no verifica el certificado | Para que funcione con proveedores que no dan la CA | En Render y en local está la CA; `npm run db:check` avisa si falta |
-| Sin límite de intentos de login por IP | El plan gratis de Render no trae WAF | bcrypt coste 12 hace lento cada intento; mejora posible: contar intentos en `usage_events` como ya hace `lib/cuotas` |
+| El límite de intentos vive en memoria | Una sola instancia en Render; guardarlo en la base costaría una escritura por intento | Un reinicio borra los contadores (el atacante gana como mucho una ventana más); bcrypt coste 12 sigue haciendo lento cada intento. Con varias réplicas habría que moverlo a la base |
+| La IP sale de `X-Forwarded-For`, que el cliente puede falsear | Render agrega la IP real al final, pero sin WAF no hay cabecera de confianza | Falseando la IP se esquivan los límites por IP (correo + IP, 100 fallos por IP y 20 altas por IP), pero no el de **50 fallos por correo**, que no depende de la IP. Contra fabricar cuentas en masa lo que aguanta es el **tope global** de cuotas: las cuentas nuevas no gastan IA más allá de él |
+| Con 50 fallos en 15 min, desde cualquier lado, se bloquea un correo para todos | Es el precio del límite por correo; el bloqueo se mira antes que la contraseña | Dura como mucho 15 min y se levanta solo. Afecta sobre todo a las cuentas demo, cuyos correos son públicos: si pasa durante la evaluación, basta esperar o entrar con otra |
+| Los topes (5/50/100/20 y 30/60) no están medidos | No hay tráfico real todavía | Son configurables (`VEKTORA_QUOTA_*_GLOBAL`; `sin-tope` lo quita, `0` deshabilita) y el mensaje dice cuándo se libera un hueco |
 | Vulnerabilidades nuevas sin parche | Aparecen cada semana | Dependabot + Seguridad los lunes + Trivy bloquea publicar |

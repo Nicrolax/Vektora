@@ -83,7 +83,7 @@ const FUNCTIONS = [
   'match_task_candidates', 'apply_task_matches', 'accept_task_application', 'skill_similarity_pairs',
   'claim_deliverable_for_qa', 'release_deliverable_qa', 'apply_qa_verdict', 'pending_qa_deliverables',
   'bump_matching_round', 'consume_quota', 'quota_usage', 'is_admin',
-  'recover_stalled_task',
+  'recover_stalled_task', 'consume_capped_quota',
 ] as const;
 
 let failures = 0;

@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AdminService } from '@/lib/admin';
 import { AuthService, MENSAJE_CREDENCIALES, PostgresCuentasRepository } from '@/lib/auth';
 import { buscarTareas, normalizarFiltros, reporteGeneral } from '@/lib/consultas';
+import { cargarCuotas, consumirCuota } from '@/lib/cuotas';
 import { cerrarDb, crearDb, json, type Db } from '@/lib/db';
 import { EntregasService, PostgresEntregasRepository } from '@/lib/entregas';
 import { AuthError, ConflictoError, PermisoDenegadoError, RecursoNoEncontradoError } from '@/lib/errores';
@@ -214,6 +215,26 @@ describe.skipIf(!ACTIVA)('integración con PostgreSQL', () => {
       const reporte = await reporteGeneral(clienteId);
       const fila = reporte.proyectos.find((p) => p.projectId === proyectoId);
       expect(fila).toMatchObject({ tareas: 1, aprobadas: 0, presupuestoTotal: 400, presupuestoPromedio: 400 });
+    });
+  });
+
+  describe('tope global de cuotas (FASE 8)', () => {
+    // Por la llamada REAL: `consumirCuota` deja pasar si la base falla, así que solo
+    // contra PostgreSQL se ve que el tope de verdad deniega.
+    it('cuentas distintas no esquivan el tope global, y el rechazo lo explica', async () => {
+      const previos = await contar(
+        "public.usage_events where action = 'crear_proyecto' and created_at >= now() - interval '24 hours'",
+        [],
+      );
+      const cuotas = cargarCuotas({
+        VEKTORA_QUOTA_PROYECTOS: '5',
+        VEKTORA_QUOTA_PROYECTOS_GLOBAL: String(previos + 2),
+      });
+      expect((await consumirCuota(clienteId, 'crear_proyecto', cuotas)).permitido).toBe(true);
+      expect((await consumirCuota(terceroId, 'crear_proyecto', cuotas)).permitido).toBe(true);
+      const rechazo = await consumirCuota(proveedorId, 'crear_proyecto', cuotas);
+      expect(rechazo.permitido).toBe(false);
+      expect(rechazo.mensaje).toMatch(/^Entre todas las cuentas/);
     });
   });
 });
