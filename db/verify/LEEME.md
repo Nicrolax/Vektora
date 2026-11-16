@@ -17,7 +17,7 @@ un servicio `pgvector/pgvector:pg16` vacío. Para hacerlo a mano, con Docker:
 ```bash
 docker run -d --name vk-verify -e POSTGRES_PASSWORD=verify -p 5433:5432 pgvector/pgvector:pg16
 P="docker exec -i vk-verify psql -U postgres -d postgres -v ON_ERROR_STOP=1"
-for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql          db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql          db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/migrations/0008_qa_cola.sql db/migrations/0009_estado_proyecto.sql db/migrations/0010_recuperar_tareas.sql db/migrations/0011_tope_global.sql db/seeds/01_skills.sql          db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql          db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql db/verify/06_qa_cola.sql db/verify/07_estado_proyecto.sql db/verify/08_recuperar_tareas.sql db/verify/09_tope_global.sql; do
+for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql          db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql          db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/migrations/0008_qa_cola.sql db/migrations/0009_estado_proyecto.sql db/migrations/0010_recuperar_tareas.sql db/migrations/0011_tope_global.sql db/migrations/0012_qa_reintentos.sql db/seeds/01_skills.sql          db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql          db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql db/verify/06_qa_cola.sql db/verify/07_estado_proyecto.sql db/verify/08_recuperar_tareas.sql db/verify/09_tope_global.sql db/verify/10_qa_reintentos.sql; do
   $P < "$f" || break
 done
 docker rm -f vk-verify
@@ -192,3 +192,42 @@ Se ejecuta con `$P -f db/verify/09_tope_global.sql`, tras la migración
 - El tope global también es **deslizante**: eventos de hace 25 h ya no cuentan.
 - `consume_quota` de la 0007 sigue con **una sola versión** y responde como antes.
 - `anon` y `authenticated` no tienen EXECUTE sobre `consume_capped_quota`.
+
+## FASE 8 — reintentos y salida del juez (19 comprobaciones más)
+
+Se ejecuta con `$P -f db/verify/10_qa_reintentos.sql`, tras la migración
+`0012_qa_reintentos.sql`. Cada comprobación avisa con `FALLO` u `OK`.
+
+- **Diez errores viejos no tapan a uno nuevo**: con diez entregables que ya fallaron tres
+  veces, el que nunca falló entra en los diez huecos de la corrida y va primero. Control
+  negativo: con la cola de la 0008, el nuevo no entra en ninguna corrida mientras los diez
+  sigan fallando.
+- Un **fallo** saca al entregable de la cola por 5 minutos y guarda el código de la causa.
+- La **espera crece** (el cuarto fallo espera 40 minutos), tiene **techo de 6 horas** y
+  **nunca se abandona**: vencida la espera vuelve, falle las veces que falle.
+- La espera es **solo de la cola**: `npm run qa -- <id>` puede forzar el reintento, y la toma
+  sigue informando el intento por proveedor de la 0008.
+- Un **ensayo** devuelto a `pending` no suma fallos ni espera.
+- Un **turno abandonado cuenta como fallo** (código `abandoned`) y no se retoma hasta el
+  plazo del turno más la espera que le toca.
+- `fail_deliverable_qa` sobre algo que no está tomado no cambia nada.
+- `anon` y `authenticated` no tienen EXECUTE sobre las funciones del juez.
+
+La salida de un entregable que nunca se puede juzgar (`give_up_deliverable_qa`):
+
+- **Diez caídas de cuota no cuentan** contra el entregable ni permiten darlo por perdido.
+- **Sin evidencia** de que el juez funciona (otro entregable con veredicto del modelo desde el
+  primer fallo) **se espera**; pasada la **dispensa** por tiempo, se actúa igual.
+- La **primera vez se devuelve**: tarea en `revision_requested`, versión fuera de la cola y sin
+  poder tomarse, sin reseña ni reputación, y queda en `audit_logs`.
+- Devolver **abre un plazo nuevo**: la 0010 no da la tarea por vencida al instante aunque se
+  hubiera adjudicado hace 30 días.
+- La **versión siguiente es el intento 1**: la devuelta no cuenta.
+- La **segunda vez** del mismo proveedor, con evidencia, la tarea pasa a `failed` y la 0010 la
+  reabre con una reasignación más y **sin descontar reputación**.
+- Si la tarea **ya no espera** esa entrega (cancelada, otro proveedor, otra versión), no se toca.
+- El proveedor **no puede reeditar** una versión dada por no evaluable (la política
+  `deliverables_update` lo excluye): lo que sigue es una versión nueva.
+
+En CI la base es compartida: ahí la devolución la habilita la evidencia que dejan los otros
+archivos, no la dispensa. La dispensa sola se ve corriendo el archivo sobre una base vacía.

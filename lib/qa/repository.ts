@@ -46,6 +46,15 @@ export interface QaClaim {
   project: { id: string; title: string; objective: string };
   previousStatus: string;
   previousRejections: number;
+  /**
+   * Veces que el juez no pudo terminar con este entregable (migración 0012). Incluye el
+   * turno abandonado que esta toma acaba de retomar, si lo hubo.
+   */
+  qaErrors: number;
+  /** De esos, los atribuibles al entregable (deciden si se lo da por no evaluable). */
+  qaUnjudgeable: number;
+  /** true si esta toma retomó un turno abandonado (el juicio anterior murió a mitad). */
+  reclaimed: boolean;
 }
 
 export interface QaClaimResult {
@@ -99,9 +108,45 @@ export interface PendingDeliverable {
  */
 export type QaReleaseStatus = 'pending' | 'error';
 
+export interface QaFailInput {
+  error: string;
+  /** Causa: `rate_limit`, `invalid_output`, `database`… Queda en `qa_feedback`. */
+  code: string;
+  /** Si el fallo se atribuye al entregable (lo decide `esFalloDelEntregable`). */
+  unjudgeable: boolean;
+}
+
+export interface QaFailResult {
+  released: boolean;
+  errorCount: number;
+  /** Fallos atribuibles al entregable, contando este. */
+  unjudgeableCount: number;
+}
+
+export interface QaGiveUpResult {
+  givenUp: boolean;
+  /** `returned`: la versión vuelve al proveedor. `failed`: la tarea vuelve al mercado. */
+  action: 'returned' | 'failed' | null;
+  /** true si no se actuó por falta de evidencia de que el juez funciona con otros. */
+  held: boolean;
+  reason: string | null;
+}
+
 export interface QaRepository {
   claim(deliverableId: string): Promise<QaClaimResult>;
   release(deliverableId: string, status: QaReleaseStatus, error: string | null): Promise<boolean>;
+  /**
+   * Suelta el turno como `error` CONTANDO el fallo: la cola espera cada vez más antes de
+   * volver a ofrecerlo y lo pone detrás de lo que falló menos (migración 0012). `release`
+   * sigue sirviendo para devolver un ensayo a su estado anterior, que no es un fallo.
+   */
+  fail(deliverableId: string, input: QaFailInput): Promise<QaFailResult>;
+  /**
+   * Da la versión por no evaluable: la primera vez la devuelve al proveedor, la segunda
+   * devuelve la tarea al mercado. Sin reseña ni reputación. La base solo actúa si hay
+   * evidencia de que el juez funciona con otros entregables o pasó la dispensa.
+   */
+  giveUp(deliverableId: string, waiverHours: number): Promise<QaGiveUpResult>;
   applyVerdict(input: ApplyVerdictInput): Promise<ApplyVerdictResult>;
   pending(limit: number): Promise<PendingDeliverable[]>;
   /** Último entregable juzgable de una tarea; `npm run qa -- --task <id>` lo usa. */
@@ -209,6 +254,9 @@ export class PostgresQaRepository implements QaRepository {
         },
         previousStatus: asString(payload['previous_status']) ?? 'pending',
         previousRejections: Number(payload['previous_rejections'] ?? 0),
+        qaErrors: Number(payload['qa_errors'] ?? 0),
+        qaUnjudgeable: Number(payload['qa_unjudgeable'] ?? 0),
+        reclaimed: payload['reclaimed'] === true,
       },
     };
   }
@@ -228,6 +276,47 @@ export class PostgresQaRepository implements QaRepository {
     } catch (causa) {
       fail('no se pudo devolver el turno', causa);
     }
+  }
+
+  async fail(deliverableId: string, input: QaFailInput): Promise<QaFailResult> {
+    let r: Record<string, unknown>;
+    try {
+      const fila = await this.db.one<{ r: Record<string, unknown> | null }>(
+        `select public.fail_deliverable_qa(
+                  p_deliverable_id => $1::uuid, p_error => $2, p_error_code => $3,
+                  p_unjudgeable => $4::boolean) as r`,
+        [deliverableId, input.error, input.code, input.unjudgeable],
+      );
+      r = fila?.r ?? {};
+    } catch (causa) {
+      fail('no se pudo devolver el turno como fallo', causa);
+    }
+    return {
+      released: r['released'] === true,
+      errorCount: Number(r['error_count'] ?? 0),
+      unjudgeableCount: Number(r['unjudgeable_count'] ?? 0),
+    };
+  }
+
+  async giveUp(deliverableId: string, waiverHours: number): Promise<QaGiveUpResult> {
+    let r: Record<string, unknown>;
+    try {
+      const fila = await this.db.one<{ r: Record<string, unknown> | null }>(
+        `select public.give_up_deliverable_qa(
+                  p_deliverable_id => $1::uuid, p_waiver_hours => $2::numeric) as r`,
+        [deliverableId, waiverHours],
+      );
+      r = fila?.r ?? {};
+    } catch (causa) {
+      fail('no se pudo dar el entregable por no evaluable', causa);
+    }
+    const action = r['action'];
+    return {
+      givenUp: r['given_up'] === true,
+      action: action === 'returned' || action === 'failed' ? action : null,
+      held: r['held'] === true,
+      reason: asString(r['reason']),
+    };
   }
 
   async applyVerdict(input: ApplyVerdictInput): Promise<ApplyVerdictResult> {

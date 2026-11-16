@@ -33,6 +33,13 @@ export async function POST(request: Request): Promise<NextResponse> {
       entregable: resultado.deliverableId,
       tarea: resultado.claim?.task.code ?? null,
       veredicto: resultado.decision?.qaStatus ?? null,
+      // `devuelta` / `al_mercado` cuando el juez dio la versión por no evaluable (0012).
+      salida:
+        resultado.givenUp?.givenUp === true
+          ? resultado.givenUp.action === 'failed'
+            ? 'al_mercado'
+            : 'devuelta'
+          : null,
       puntuacion: resultado.decision?.score ?? null,
       motivo: resultado.reason,
     })),

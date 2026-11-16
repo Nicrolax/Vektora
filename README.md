@@ -94,7 +94,7 @@ hecho lo crea `db/00_plataforma.sql`: el esquema `auth` con `auth.users.password
   autónomos, el login y la telemetría. Para leer como una persona, `getDb().asUser(id, …)`
   abre una transacción con `SET LOCAL ROLE authenticated` y fija `request.jwt.claim.sub`:
   `auth.uid()` vale ese id y las 47 políticas RLS se aplican igual que antes.
-- **Orden de los scripts.** `00_plataforma → schema → 0002 … 0005, 0007 … 0011 → seeds/01_skills →
+- **Orden de los scripts.** `00_plataforma → schema → 0002 … 0005, 0007 … 0012 → seeds/01_skills →
   seeds/02_datos_demo`. Ya están concatenados en `sql/` (`npm run sql:build`; `sql:check`
   falla en CI si alguien los editó a mano). Todos son idempotentes.
 - **Comprobación.** `npm run db:check` revisa la conexión (y si va por SSL), extensiones,
@@ -211,6 +211,7 @@ db/
   migrations/0009_estado_proyecto.sql  FASE 8 — el proyecto pasa solo a activo y a completado
   migrations/0010_recuperar_tareas.sql  FASE 8 — plazos de entrega y tareas que vuelven al mercado
   migrations/0011_tope_global.sql  FASE 8 — tope de cuotas entre todas las cuentas
+  migrations/0012_qa_reintentos.sql  FASE 8 — un entregable que el juez no puede evaluar espera, no tapa la cola y tiene salida
   verify/                    Verificación de comportamiento sobre base local desechable
   seeds/01_skills.sql        Catálogo semilla de skills
   seeds/02_datos_demo.sql    Cuentas, proyectos y tareas de la demo

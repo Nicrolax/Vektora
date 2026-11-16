@@ -150,6 +150,14 @@ const QA: Record<string, Presentacion> = {
     color: 'var(--color-apagado)',
     ayuda: 'Falló la infraestructura de IA. No cuenta como rechazo: se puede reintentar.',
   },
+  // No es un estado de la base: es `error` con `qa_given_up_at` (lo arma lib/consultas).
+  no_evaluable: {
+    etiqueta: 'no se pudo evaluar',
+    color: 'var(--color-revision)',
+    ayuda:
+      'El evaluador no pudo juzgar esta versión tras varios intentos. No es un rechazo, no ' +
+      'descuenta reputación ni cuenta como intento.',
+  },
 };
 
 export function presentarQa(estado: string): Presentacion {

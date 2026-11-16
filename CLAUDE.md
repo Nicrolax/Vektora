@@ -112,7 +112,7 @@ app/acciones/       Server Actions: proyectos, proveedor, entregas (únicos punt
 app/api/cron/       emparejar y evaluar (los dispara GitHub Actions; en dev, npm run cron)
 app/health/         /health: 200 si app y base responden
 components/         grafo/, ui/, estados.ts (traducción ÚNICA estado → etiqueta + color)
-db/                 schema.sql, migrations/0002–0011, seeds/, verify/
+db/                 schema.sql, migrations/0002–0012, seeds/, verify/
 scripts/            CLIs del ciclo autónomo
 tests/              Vitest
 docs/               Documentación evaluable
@@ -150,7 +150,7 @@ testeable; SQL hace solo lo que solo SQL puede hacer (vecinos vectoriales, atomi
 - **La base desplegada es la fuente de verdad.** Si código y documentación discrepan sobre un
   identificador, se consulta la base (`db/dump-schema.sql`). Reconstruir SQL desde descripciones
   ya rompió la base una vez.
-- Orden de despliegue: `db/schema.sql` → `db/migrations/0002` … `0011` → `db/seeds/`.
+- Orden de despliegue: `db/schema.sql` → `db/migrations/0002` … `0012` → `db/seeds/`.
 - Toda migración es **idempotente** y empieza con `set search_path = public, extensions;`
   (sin eso `uuid_generate_v4()` no se resuelve).
 - `db/00_plataforma.sql` reemplaza a Supabase (esquema `auth`, `auth.users.password_hash`,
@@ -167,7 +167,7 @@ testeable; SQL hace solo lo que solo SQL puede hacer (vecinos vectoriales, atomi
   `reputation_events.user_id`, `provider_profiles.hourly_rate_usd`, `deliverables.qa_status`,
   `reviews.source`, `audit_logs.entity_type/entity_id`, `project_dag(uuid)` es **función**.
   `ai_run_status` no tiene `cancelled` (sí `timeout`); la operación del juez es `qa_judge`.
-- Verificación de comportamiento SQL: `db/verify/` (archivos 01–09) sobre
+- Verificación de comportamiento SQL: `db/verify/` (archivos 01–10) sobre
   una base local desechable. **No escribir SQL sin ejecutarlo.**
 
 ## Variables de entorno relevantes
@@ -186,6 +186,7 @@ Ver `.env.example` / `lib/*/config.ts` para la lista completa. Las que tienen hi
 | `VEKTORA_QA_MIN_ATTEMPTS_BEFORE_REJECT` | 2 | Un solo veredicto no puede cerrar una tarea |
 | `VEKTORA_DELIVERY_HOURS_FACTOR` / `_MIN_HOURS` / `_MAX_HOURS` | 6 / 48 / 720 | Plazo de entrega; **no medidos**, punto de partida |
 | `VEKTORA_TASK_MAX_REASSIGNMENTS` | 2 | Vueltas al mercado antes de dar el proyecto por fallido |
+| `VEKTORA_QA_MAX_UNJUDGEABLE` / `_UNJUDGEABLE_WAIVER_HOURS` | 5 / 48 | Fallos atribuibles al entregable antes de devolverlo (y la 2.ª vez, al mercado); horas tras las que se actúa sin evidencia de que el juez funciona con otros. **No medidos** |
 | `VEKTORA_QUOTA_PROYECTOS_GLOBAL` / `_PROVEEDOR_GLOBAL` | 30 / 60 | Tope entre todas las cuentas: crear cuentas no esquiva la cuota. **No medidos**; `sin-tope` lo quita, `0` deshabilita |
 
 Los umbrales son **medidos, no puestos a ojo**. No cambiarlos sin volver a medir

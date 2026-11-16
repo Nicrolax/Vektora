@@ -326,3 +326,37 @@ export function describeDecision(decision: QaDecision): string {
   }
   return parts.join('; ');
 }
+
+/**
+ * Códigos de fallo que se atribuyen al ENTREGABLE, no a nuestra infraestructura.
+ *
+ * Son los casos en que el modelo RESPONDIÓ y la respuesta no sirvió (salida inválida, JSON
+ * roto, respuesta cortada, bloqueo por políticas, petición rechazada por su tamaño o forma),
+ * más el juicio que murió a mitad (`abandoned`): sin este último, un entregable que siempre
+ * tumba el juicio no tendría salida, porque nunca llega a soltar el turno.
+ *
+ * Todo lo demás es avería nuestra y no cuenta NUNCA: sin configurar, credenciales, cuota,
+ * caída del proveedor, red, tiempo agotado, cancelación, la base o lo inesperado. Una cuota
+ * agotada un fin de semana no puede expulsar a todos los entregables que esperaban.
+ *
+ * `bad_request` es ambiguo (entrega enorme, o una configuración nuestra rota). Entra porque
+ * la salida exige además evidencia de que el juez funciona con otros entregables: si la
+ * avería es nuestra, nadie recibe veredicto y no se expulsa a nadie (ver la 0012).
+ */
+export const FALLOS_DEL_ENTREGABLE: ReadonlySet<string> = new Set([
+  'invalid_output',
+  'invalid_json',
+  'truncated',
+  'blocked',
+  'bad_request',
+  'abandoned',
+]);
+
+export function esFalloDelEntregable(codigo: string): boolean {
+  return FALLOS_DEL_ENTREGABLE.has(codigo);
+}
+
+/** ¿Llegó el entregable al máximo de fallos atribuibles? Entonces se intenta la salida. */
+export function debeDarsePorNoEvaluable(fallosDelEntregable: number, config: QaConfig): boolean {
+  return fallosDelEntregable >= config.unjudgeable.maxFailures;
+}

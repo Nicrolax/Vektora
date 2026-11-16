@@ -355,7 +355,11 @@ export async function obtenerTarea(
       submitted_at: string;
       qa_evaluated_at: string | null;
     }>(
-      `select id, version, summary, qa_status, qa_score, qa_feedback ->> 'summary' as qa_resumen,
+      // Una versión dada por no evaluable (0012) sigue en `error` en la base, pero «error del
+      // evaluador, se puede reintentar» sería falso: ya no se reintenta. Se muestra aparte.
+      `select id, version, summary,
+              case when qa_given_up_at is not null then 'no_evaluable' else qa_status::text end as qa_status,
+              qa_score, qa_feedback ->> 'summary' as qa_resumen,
               qa_criteria_results, submitted_at, qa_evaluated_at
          from public.deliverables
         where task_id = $1

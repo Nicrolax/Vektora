@@ -14,7 +14,7 @@ el nombre vive en `profiles`. Aplicar aquel archivo habría roto la base.
 
 ## Orden de despliegue
 
-Ya concatenado en `sql/01-crear-tablas.sql` (1–11) y `sql/02-datos-prueba.sql` (12–13) con
+Ya concatenado en `sql/01-crear-tablas.sql` (1–12) y `sql/02-datos-prueba.sql` (13–14) con
 `npm run sql:build`. Se aplica con `npm run sql:aplicar` (o solo, por initdb, en Docker).
 
 | # | Archivo | Contenido |
@@ -30,8 +30,9 @@ Ya concatenado en `sql/01-crear-tablas.sql` (1–11) y `sql/02-datos-prueba.sql`
 | 9 | `migrations/0009_estado_proyecto.sql` | `refresh_project_status` y sus disparadores: el proyecto pasa solo a `active` y a `completed` |
 | 10 | `migrations/0010_recuperar_tareas.sql` | `project_tasks.reassignments`, `recover_stalled_task`: plazo de entrega y vuelta al mercado de tareas vencidas o fallidas |
 | 11 | `migrations/0011_tope_global.sql` | `consume_capped_quota`: cuota por persona más un tope entre todas las cuentas, para que crear cuentas nuevas no vacíe el free tier de IA |
-| 12 | `seeds/01_skills.sql` | Catálogo semilla: 30 skills en 9 categorías |
-| 13 | `seeds/02_datos_demo.sql` | Datos de la demo: 6 cuentas (contraseña pública), 2 proyectos, 8 tareas, candidaturas, entrega, reputación |
+| 12 | `migrations/0012_qa_reintentos.sql` | Contadores de fallos del juez en `deliverables`, `qa_retry_delay`, `fail_deliverable_qa`, `give_up_deliverable_qa`; reemplaza `claim_deliverable_for_qa` y `pending_qa_deliverables` de la 0008: un entregable que falla espera cada vez más y no tapa a los demás, y uno que nunca se puede juzgar se devuelve una vez y después vuelve al mercado |
+| 13 | `seeds/01_skills.sql` | Catálogo semilla: 30 skills en 9 categorías |
+| 14 | `seeds/02_datos_demo.sql` | Datos de la demo: 6 cuentas (contraseña pública), 2 proyectos, 8 tareas, candidaturas, entrega, reputación |
 | — | `npm run skills:embed` | Vectoriza el catálogo (necesita `GOOGLE_AI_API_KEY`). Sin esto no hay resolución semántica |
 
 (La `0006_realtime.sql` de Supabase se eliminó: la vista del grafo ahora sondea cada 15 s.)

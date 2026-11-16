@@ -19,13 +19,14 @@
  */
 
 import { DominioError } from '@/lib/errores';
-import { getAiClient, type AiClient } from '@/lib/ai';
-import { errorMessage } from '@/lib/ai/errors';
+import { AiError, AiExhaustedError, errorMessage, getAiClient, type AiClient } from '@/lib/ai';
 import { getQaConfig, type QaConfig } from './config';
 import {
+  debeDarsePorNoEvaluable,
   decideEmptySubmission,
   decideVerdict,
   describeDecision,
+  esFalloDelEntregable,
   hasSubmittedEvidence,
   type QaDecision,
 } from './policy';
@@ -33,6 +34,7 @@ import {
   QaRepositoryError,
   type ApplyVerdictResult,
   type QaClaim,
+  type QaGiveUpResult,
   type QaRepository,
   type QaReleaseStatus,
 } from './repository';
@@ -71,6 +73,8 @@ export interface JudgeResult {
   latencyMs: number;
   applied: ApplyVerdictResult | null;
   dryRun: boolean;
+  /** Si el juez dio la versión por no evaluable (devuelta, o tarea de vuelta al mercado). */
+  givenUp: QaGiveUpResult | null;
 }
 
 export interface QaJudgeOptions {
@@ -97,24 +101,7 @@ export class QaJudge {
 
   async judge(input: JudgeInput): Promise<JudgeResult> {
     const dryRun = input.dryRun === true;
-    const base: JudgeResult = {
-      deliverableId: input.deliverableId,
-      judged: false,
-      reason: null,
-      claim: null,
-      criteria: [],
-      malformedCriteria: 0,
-      decision: null,
-      skippedAi: false,
-      runId: null,
-      provider: null,
-      model: null,
-      repairs: 0,
-      costUsd: 0,
-      latencyMs: 0,
-      applied: null,
-      dryRun,
-    };
+    const base = emptyResult(input.deliverableId, dryRun, null);
 
     const claimed = await this.repository.claim(input.deliverableId);
     if (!claimed.claimed || claimed.claim === null) {
@@ -125,6 +112,20 @@ export class QaJudge {
     // A partir de aquí el entregable está en `running`: TODO camino de salida tiene que
     // resolverlo o soltarlo, o se queda bloqueado para siempre y ningún juez lo recogerá.
     const restore = claim.previousStatus as QaReleaseStatus;
+
+    // Un juicio que muere SIEMPRE en este entregable nunca llega a soltar el turno: solo la
+    // toma que lo retoma puede contarlo y, llegado el máximo, darle salida.
+    if (
+      !dryRun &&
+      claim.reclaimed &&
+      debeDarsePorNoEvaluable(claim.qaUnjudgeable, this.config)
+    ) {
+      const salida = await this.safeGiveUp(input.deliverableId);
+      if (salida?.givenUp === true) {
+        return { ...base, claim, givenUp: salida, reason: describirSalida(salida) };
+      }
+      // Sin evidencia de que el juez funciona: se intenta juzgar igual, como un reintento más.
+    }
 
     try {
       const parsed = parseAcceptanceCriteria(claim.task.acceptanceCriteria);
@@ -188,12 +189,18 @@ export class QaJudge {
           maxOutputTokens: this.config.maxOutputTokens,
         });
       } catch (error) {
-        // Avería nuestra, no del proveedor: se suelta como `error` y se puede reintentar.
+        // Nunca un veredicto contra el proveedor: se suelta como `error`, contando el fallo, y
+        // la cola lo reintenta más tarde. Si el fallo es del entregable y ya van demasiados,
+        // se le da salida (sin reseña ni reputación).
         const detail = errorMessage(error);
-        await this.safeRelease(input.deliverableId, 'error', detail);
+        const salida = await this.safeFail(input.deliverableId, error, restore, dryRun);
         return {
           ...withClaim,
-          reason: `el juez no pudo evaluar: ${detail}`,
+          givenUp: salida,
+          reason:
+            salida?.givenUp === true
+              ? `${describirSalida(salida)} (último fallo: ${detail})`
+              : `el juez no pudo evaluar: ${detail}`,
         };
       }
 
@@ -222,7 +229,7 @@ export class QaJudge {
       );
     } catch (error) {
       // Cualquier fallo inesperado deja igualmente el entregable reintentable.
-      await this.safeRelease(input.deliverableId, 'error', errorMessage(error));
+      await this.safeFail(input.deliverableId, error, restore, dryRun);
       if (error instanceof QaRepositoryError) throw error;
       throw new QaError(`VEKTORA/QA: el juicio falló -> ${errorMessage(error)}`, error);
     }
@@ -298,18 +305,123 @@ export class QaJudge {
     }
   }
 
-  /** Cola de entregables pendientes, más antiguo primero. */
+  /**
+   * Suelta el turno de un juicio que no terminó. Fuera de un ensayo cuenta como fallo (la
+   * cola lo hará esperar) y, si el fallo es del entregable y llegó al máximo, intenta darle
+   * salida. En un ensayo se devuelve al estado anterior: un ensayo no escribe nada, tampoco
+   * un fallo ni una salida.
+   */
+  private async safeFail(
+    deliverableId: string,
+    error: unknown,
+    restore: QaReleaseStatus,
+    dryRun: boolean,
+  ): Promise<QaGiveUpResult | null> {
+    if (dryRun) {
+      await this.safeRelease(deliverableId, restore, null);
+      return null;
+    }
+    const code = codigoDeFallo(error);
+    const unjudgeable = esFalloDelEntregable(code);
+    try {
+      const fallo = await this.repository.fail(deliverableId, {
+        error: errorMessage(error),
+        code,
+        unjudgeable,
+      });
+      if (fallo.released && unjudgeable && debeDarsePorNoEvaluable(fallo.unjudgeableCount, this.config)) {
+        return await this.safeGiveUp(deliverableId);
+      }
+    } catch (causa) {
+      console.warn(
+        `VEKTORA/QA: no se pudo devolver el turno de ${deliverableId} -> ${errorMessage(causa)}`,
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Da la versión por no evaluable. Si la base no responde, no pasa nada grave: el
+   * entregable sigue en `error` y el próximo fallo lo vuelve a intentar.
+   */
+  private async safeGiveUp(deliverableId: string): Promise<QaGiveUpResult | null> {
+    try {
+      return await this.repository.giveUp(deliverableId, this.config.unjudgeable.waiverHours);
+    } catch (causa) {
+      console.warn(
+        `VEKTORA/QA: no se pudo dar por no evaluable ${deliverableId} -> ${errorMessage(causa)}`,
+      );
+      return null;
+    }
+  }
+
+  /** Cola de entregables pendientes: los que menos fallaron primero, y después los más antiguos. */
   async queue(limit?: number): Promise<Awaited<ReturnType<QaRepository['pending']>>> {
     return this.repository.pending(limit ?? this.config.queueLimit);
   }
 
-  /** Juzga la cola entera. Un fallo en uno no detiene a los demás. */
+  /**
+   * Juzga la cola entera. Un fallo en uno no detiene a los demás: `judge` ya soltó su turno
+   * antes de lanzar, así que aquí solo queda anotarlo y seguir. Sin esto, un error de la base
+   * a mitad de la corrida dejaba sin juzgar todo lo que venía detrás y el disparador
+   * respondía 500.
+   */
   async judgeQueue(limit?: number, dryRun = false): Promise<JudgeResult[]> {
     const pending = await this.queue(limit);
     const results: JudgeResult[] = [];
     for (const entry of pending) {
-      results.push(await this.judge({ deliverableId: entry.deliverableId, dryRun }));
+      try {
+        results.push(await this.judge({ deliverableId: entry.deliverableId, dryRun }));
+      } catch (error) {
+        results.push(emptyResult(entry.deliverableId, dryRun, `el juicio falló: ${errorMessage(error)}`));
+      }
     }
     return results;
   }
+}
+
+/** Resultado sin juicio: el punto de partida de `judge` y lo que queda de uno que lanzó. */
+function emptyResult(deliverableId: string, dryRun: boolean, reason: string | null): JudgeResult {
+  return {
+    deliverableId,
+    judged: false,
+    reason,
+    claim: null,
+    criteria: [],
+    malformedCriteria: 0,
+    decision: null,
+    skippedAi: false,
+    runId: null,
+    provider: null,
+    model: null,
+    repairs: 0,
+    costUsd: 0,
+    latencyMs: 0,
+    applied: null,
+    dryRun,
+    givenUp: null,
+  };
+}
+
+/** Una línea para la traza y la respuesta del disparador. */
+function describirSalida(salida: QaGiveUpResult): string {
+  return salida.action === 'failed'
+    ? 'no evaluable por segunda vez: la tarea vuelve al mercado, sin multa'
+    : 'no evaluable: la versión vuelve al proveedor, sin multa y sin contar como intento';
+}
+
+/**
+ * Causa de un fallo del juez, para guardarla con el entregable.
+ *
+ * De la cadena agotada se toma el ÚLTIMO intento, no `exhausted`: «se agotó» no dice si fue
+ * cuota, salida inválida o un bloqueo. Sin proveedores configurados no hay intentos y la
+ * causa es `not_configured`. Distinguir una avería nuestra (cuota, red, base) de un
+ * entregable que no se puede juzgar es lo que hará falta para decidir qué hacer con uno que
+ * falla para siempre.
+ */
+export function codigoDeFallo(error: unknown): string {
+  if (error instanceof AiExhaustedError) return error.lastFailure?.code ?? 'not_configured';
+  if (error instanceof AiError) return error.code;
+  if (error instanceof QaRepositoryError) return 'database';
+  return 'unexpected';
 }

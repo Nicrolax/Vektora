@@ -81,6 +81,22 @@ export const QaConfigSchema = z
     VEKTORA_QA_QUEUE_LIMIT: z.coerce.number().int().min(1).max(200).default(20),
     /** Tokens máximos de la respuesta del juez. */
     VEKTORA_QA_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(32_000).default(4_096),
+
+    /**
+     * Fallos atribuibles al ENTREGABLE (el modelo respondió algo inutilizable, o el juicio
+     * murió a mitad) tras los cuales se lo da por no evaluable: la primera vez se devuelve al
+     * proveedor, la segunda la tarea vuelve al mercado. Con la espera creciente de la 0012,
+     * cinco fallos son unas dos horas y media. NO medido: punto de partida.
+     */
+    VEKTORA_QA_MAX_UNJUDGEABLE: z.coerce.number().int().min(1).max(50).default(5),
+
+    /**
+     * Horas tras el primer fallo atribuible en las que se puede dar el entregable por no
+     * evaluable SIN evidencia de que el juez funciona con otros. La evidencia evita expulsar
+     * entregables en masa si el modelo empieza a responder mal para todos; esta dispensa
+     * evita que, en una instalación sin más entregas, la evidencia no llegue nunca. NO medido.
+     */
+    VEKTORA_QA_UNJUDGEABLE_WAIVER_HOURS: z.coerce.number().min(1).max(720).default(48),
   })
   .superRefine((value, ctx) => {
     if (value.VEKTORA_QA_MIN_ATTEMPTS_BEFORE_REJECT > value.VEKTORA_QA_MAX_ATTEMPTS) {
@@ -121,6 +137,10 @@ export interface QaConfig {
   };
   queueLimit: number;
   maxOutputTokens: number;
+  unjudgeable: {
+    maxFailures: number;
+    waiverHours: number;
+  };
 }
 
 export class QaConfigError extends ConfiguracionError {
@@ -158,6 +178,10 @@ export function loadQaConfig(env: Record<string, string | undefined> = process.e
     },
     queueLimit: value.VEKTORA_QA_QUEUE_LIMIT,
     maxOutputTokens: value.VEKTORA_QA_MAX_OUTPUT_TOKENS,
+    unjudgeable: {
+      maxFailures: value.VEKTORA_QA_MAX_UNJUDGEABLE,
+      waiverHours: value.VEKTORA_QA_UNJUDGEABLE_WAIVER_HOURS,
+    },
   };
 }
 

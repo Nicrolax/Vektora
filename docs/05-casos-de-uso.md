@@ -235,7 +235,17 @@ secundarios:** Proveedores de IA
 - *1b. El entregable ya fue aprobado o rechazado:* el veredicto es terminal y no se revisa.
 - *2a. El entregable no aporta evidencia alguna:* se pide revisión sin consultar al modelo.
 - *3a. Los proveedores de IA fallan:* el entregable vuelve a `error`, que permite reintentar.
-  **Nunca se rechaza por un fallo de infraestructura.**
+  **Nunca se rechaza por un fallo de infraestructura.** Cada fallo se cuenta y guarda su
+  causa; la cola espera cada vez más antes de volver a ofrecerlo (5, 10, 20… minutos, hasta
+  6 horas) y pone delante lo que falló menos, así un entregable que falla siempre no tapa a
+  los demás. El costo: tras una caída larga de la IA, lo que esperaba puede tardar hasta 6
+  horas en volver a evaluarse; `npm run qa -- <id>` lo fuerza antes.
+- *3b. El entregable no se puede juzgar nunca* (el modelo responde siempre algo
+  inutilizable, o el juicio muere a mitad): tras cinco fallos así, y con evidencia de que el
+  juez sí funciona con otros entregables (o pasadas 48 h), la versión se **devuelve** al
+  proveedor sin multa y sin contar como intento. Si la versión siguiente tampoco se puede
+  juzgar, la tarea vuelve al mercado, también sin multa. Las caídas y la cuota agotada no
+  cuentan nunca para esto.
 - *4a. Falta el veredicto de algún criterio:* se devuelve al modelo con el mensaje exacto para
   que lo complete.
 - *6a. Se agotó el máximo de intentos de revisión:* la revisión se convierte en rechazo y la

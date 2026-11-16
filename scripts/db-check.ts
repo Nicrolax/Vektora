@@ -67,7 +67,8 @@ const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   deliverables: [
     'task_id', 'provider_id', 'version', 'summary', 'content', 'artifacts', 'evidence',
     'qa_status', 'qa_score', 'qa_feedback', 'qa_criteria_results', 'qa_run_id',
-    'qa_evaluated_at', 'qa_claimed_at', 'submitted_at',
+    'qa_evaluated_at', 'qa_claimed_at', 'qa_error_count', 'qa_retry_at',
+    'qa_unjudgeable_count', 'qa_unjudgeable_since', 'qa_given_up_at', 'submitted_at',
   ],
   reviews: ['task_id', 'deliverable_id', 'reviewer_id', 'reviewee_id', 'source', 'rating'],
   reputation_events: ['user_id', 'event_type', 'delta', 'weight', 'task_id', 'deliverable_id'],
@@ -83,7 +84,8 @@ const FUNCTIONS = [
   'match_task_candidates', 'apply_task_matches', 'accept_task_application', 'skill_similarity_pairs',
   'claim_deliverable_for_qa', 'release_deliverable_qa', 'apply_qa_verdict', 'pending_qa_deliverables',
   'bump_matching_round', 'consume_quota', 'quota_usage', 'is_admin',
-  'recover_stalled_task', 'consume_capped_quota',
+  'recover_stalled_task', 'consume_capped_quota', 'fail_deliverable_qa', 'qa_retry_delay',
+  'give_up_deliverable_qa',
 ] as const;
 
 let failures = 0;

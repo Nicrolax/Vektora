@@ -12,14 +12,17 @@ import { getDb } from '@/lib/db';
 import { QaJudge, type QaJudgeOptions } from './judge';
 import { PostgresQaRepository } from './repository';
 
-export { QaError, QaJudge } from './judge';
+export { codigoDeFallo, QaError, QaJudge } from './judge';
 export type { JudgeInput, JudgeResult, QaJudgeOptions } from './judge';
 
 export {
+  debeDarsePorNoEvaluable,
   decideEmptySubmission,
   decideVerdict,
   describeDecision,
   ENGINE_VERSION,
+  esFalloDelEntregable,
+  FALLOS_DEL_ENTREGABLE,
   hasSubmittedEvidence,
 } from './policy';
 export type {
