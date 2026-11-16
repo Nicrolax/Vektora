@@ -78,6 +78,24 @@ export interface TaskMatcherOptions {
   config?: MatchingConfig;
 }
 
+/**
+ * Servicio de embeddings, o `null` si la capa de IA no está configurada.
+ *
+ * Sin ninguna clave de IA, construir el servicio lanza. Dejar que ese error saliera tumbaba
+ * el emparejador entero (el disparador respondía 500) cuando lo que corresponde es lo mismo
+ * que con un vector que falla: ranking determinista. Sin claves no se pueden planificar
+ * proyectos, pero las tareas que ya existen se siguen adjudicando.
+ */
+function embeddingsOrNull(): EmbeddingService | null {
+  try {
+    return getEmbeddingService();
+  } catch (error) {
+    if (!isAiError(error) || error.code !== 'not_configured') throw error;
+    console.warn(`[vektora/match] sin capa de IA (${error.message}): ranking determinista`);
+    return null;
+  }
+}
+
 export class TaskMatcher {
   private readonly repository: MatchingRepository;
   private readonly embeddings: EmbeddingService | null;
@@ -86,7 +104,7 @@ export class TaskMatcher {
   constructor(options: TaskMatcherOptions) {
     this.repository = options.repository;
     this.embeddings =
-      options.embeddings !== undefined ? options.embeddings : getEmbeddingService();
+      options.embeddings !== undefined ? options.embeddings : embeddingsOrNull();
     this.config = options.config ?? getMatchingConfig();
   }
 

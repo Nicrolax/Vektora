@@ -6,7 +6,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import type { EmbeddingService } from '@/lib/ai/embeddings';
+import { resetAiConfigCache } from '@/lib/ai/config';
+import { resetEmbeddingService, type EmbeddingService } from '@/lib/ai/embeddings';
 import { loadMatchingConfig, type MatchingConfig } from '@/lib/matching/config';
 import { MatchingError, TaskMatcher, renderTaskForMatching } from '@/lib/matching/matcher';
 import {
@@ -258,6 +259,31 @@ describe('degradación', () => {
 
     expect(result.taskEmbedded).toBe(false);
     expect(result.shortlist).toHaveLength(1);
+  });
+
+  it('sin ninguna clave de IA el emparejador se construye igual y degrada', async () => {
+    // Sin claves, construir el servicio de embeddings lanza. Eso tumbaba el disparador
+    // entero (500) en vez de caer al ranking determinista.
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.stubEnv('GROQ_API_KEY', '');
+    vi.stubEnv('GOOGLE_AI_API_KEY', '');
+    resetAiConfigCache();
+    resetEmbeddingService();
+    try {
+      const repository = new FakeRepository(taskRecord({ hasEmbedding: false }), [
+        candidate({ vectorSimilarity: null }),
+      ]);
+      const matcher = new TaskMatcher({ repository, config });
+      const result = await matcher.matchTask({ taskId: 't-1' });
+
+      expect(result.degraded).toBe(true);
+      expect(result.taskEmbedded).toBe(false);
+      expect(result.shortlist).toHaveLength(1);
+    } finally {
+      vi.unstubAllEnvs();
+      resetAiConfigCache();
+      resetEmbeddingService();
+    }
   });
 
   it('sin candidatos no lanza: informa y deja la tarea intacta', async () => {
