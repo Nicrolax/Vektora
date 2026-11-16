@@ -4,11 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0d0c17">
+<link rel="icon" href="data:,">
 <title>VEKTORA · Sé el juez</title>
 <!--
   VEKTORA — stand de URUCON Juniors 2026 (tablet Samsung Galaxy Tab A8, horizontal).
 
-  Un solo archivo, SIN internet: nada se descarga, nada se guarda, no se pide ningún dato.
+  Un solo archivo que se abre desde la memoria de la tablet, SIN internet: nada se descarga,
+  nada se guarda, no se pide ningún dato.
   · Sin nadie tocándola: animación en bucle del ciclo autónomo (planificar → adjudicar →
     revisar → listo).
   · Al tocarla: «Sé el juez», tres entregas para evaluar criterio por criterio y comparar
@@ -18,7 +20,7 @@
   Los casos son de ejemplo, resueltos con las reglas reales del juez (lib/qa/policy.ts):
   se aprueba solo si se cumplen TODOS los criterios; si falta evidencia se pide, no se
   castiga; y un primer intento nunca se rechaza, se piden cambios.
-  Instrucciones de instalación: stand/LEEME.md.
+  Cómo ponerla en la tablet: stand/LEEME.md.
 -->
 <style>
   :root {
@@ -383,6 +385,28 @@ function pantallaCompleta() {
   if (document.fullscreenElement || !el.requestFullscreen) return;
   el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
 }
+
+// Blindaje del stand. Con la app fijada nadie sale de Chrome, pero adentro todavía se
+// puede salir de la pantalla completa (Atrás) o volver atrás en el historial y cerrar la
+// página. Por eso cualquier toque la vuelve a pantalla completa, y Atrás no sale de aquí.
+// La entrada de historial se agrega DENTRO de un toque: Chrome ignora las que se agregan
+// sin un gesto de la persona.
+// Sin URL en pushState: la de ahora se conserva, venga de file://, content:// o data:.
+function bloquearAtras() {
+  try { history.pushState({ stand: true }, ''); } catch { /* sin historial: nada que bloquear */ }
+}
+let atrasBloqueado = false;
+document.addEventListener('pointerup', () => {
+  pantallaCompleta();
+  if (!atrasBloqueado) {
+    atrasBloqueado = true;
+    bloquearAtras();
+  }
+});
+window.addEventListener('popstate', () => {
+  bloquearAtras();
+  mostrar('atraer');
+});
 
 // ------------------------------------------------------ animación de inicio
 let pasos = [];
