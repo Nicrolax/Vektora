@@ -17,7 +17,7 @@ un servicio `pgvector/pgvector:pg16` vacío. Para hacerlo a mano, con Docker:
 ```bash
 docker run -d --name vk-verify -e POSTGRES_PASSWORD=verify -p 5433:5432 pgvector/pgvector:pg16
 P="docker exec -i vk-verify psql -U postgres -d postgres -v ON_ERROR_STOP=1"
-for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql          db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql          db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/migrations/0008_qa_cola.sql db/seeds/01_skills.sql          db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql          db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql db/verify/06_qa_cola.sql; do
+for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql          db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql          db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/migrations/0008_qa_cola.sql db/migrations/0009_estado_proyecto.sql db/seeds/01_skills.sql          db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql          db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql db/verify/06_qa_cola.sql db/verify/07_estado_proyecto.sql; do
   $P < "$f" || break
 done
 docker rm -f vk-verify
@@ -140,3 +140,20 @@ diferencia de los archivos anteriores, cada comprobación se evalúa sola: avisa
 Control negativo: sin la `0008`, este archivo da cuatro `FALLO` (el entregable sigue en la
 cola, se retoma, la versión superada se toma y el DAG retrocede) y se corta en el turno
 abandonado.
+
+## FASE 8 — estado automático del proyecto (10 comprobaciones más)
+
+Se ejecuta con `$P -f db/verify/07_estado_proyecto.sql`, tras la migración
+`0009_estado_proyecto.sql`. Igual que el `06`, cada comprobación avisa con `FALLO` u `OK`.
+
+- Sin trabajo empezado el proyecto sigue `planned`; **la primera adjudicación lo pasa a
+  `active`** y fecha `started_at`.
+- Con tareas pendientes **no se completa**; con todas las no canceladas aprobadas pasa a
+  **`completed`** con `completed_at`. Una tarea cancelada no lo impide.
+- **`paused` y `cancelled` se respetan**: los eligió la persona y ningún cambio de tarea los
+  pisa. Al reanudar un proyecto cuyas tareas se aprobaron durante la pausa, **se completa
+  solo** (ya no queda ninguna tarea que vaya a cambiar).
+- Una **tarea nueva reabre** un proyecto completado: si siguiera `completed`, el emparejador
+  la ignoraría para siempre.
+- El borrado en cascada de un proyecto no tropieza con el disparador de tareas.
+- `anon` y `authenticated` no tienen EXECUTE sobre `refresh_project_status`.

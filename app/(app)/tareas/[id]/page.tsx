@@ -25,6 +25,9 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
   // El botón solo aparece si la tarea admite una entrega ahora (la acción lo vuelve a comprobar).
   const soyProveedor =
     tarea.assigneeId === user.id && (ESTADOS_ENTREGABLES as readonly string[]).includes(tarea.status);
+  // Ya se buscó proveedor y no apareció nadie: decirlo, en vez de «todavía no se puntuó».
+  const sinMercado =
+    tarea.assigneeId === null && tarea.matchingRounds > 0 && listaCandidaturas.length === 0;
 
   return (
     <div className="space-y-6">
@@ -100,8 +103,16 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
           Candidaturas
         </Titulo>
         <div className="mt-4 space-y-3">
-          {listaCandidaturas.length === 0 && (
+          {listaCandidaturas.length === 0 && !sinMercado && (
             <Vacio>Todavía no se puntuó ningún candidato para esta tarea.</Vacio>
+          )}
+          {sinMercado && (
+            <Vacio>
+              Sin proveedores disponibles por ahora: se buscó {tarea.matchingRounds}{' '}
+              {tarea.matchingRounds === 1 ? 'vez' : 'veces'} y nadie cubre las habilidades y el
+              presupuesto de esta tarea. Se sigue intentando sola en cada ronda; no hace falta
+              que hagas nada.
+            </Vacio>
           )}
           {listaCandidaturas.map((candidatura) => (
             <div

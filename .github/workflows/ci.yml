@@ -129,9 +129,11 @@ jobs:
           for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql \
                    db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql \
                    db/migrations/0005_qa.sql db/migrations/0007_escalada.sql \
-                   db/migrations/0008_qa_cola.sql db/seeds/01_skills.sql \
+                   db/migrations/0008_qa_cola.sql db/migrations/0009_estado_proyecto.sql \
+                   db/seeds/01_skills.sql \
                    db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql \
-                   db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql db/verify/06_qa_cola.sql; do
+                   db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql db/verify/06_qa_cola.sql \
+                   db/verify/07_estado_proyecto.sql; do
             echo "::group::$f"
             psql -d verificacion -v ON_ERROR_STOP=1 -q -f "$f" | tee -a verify.log
             echo "::endgroup::"

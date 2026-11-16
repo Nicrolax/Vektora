@@ -30,6 +30,11 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     // Como dueño de las tablas: es un agente autónomo, no una persona. Las tareas de
     // proyectos pausados o cancelados no se emparejan.
+    //
+    // Orden: primero las que menos rondas llevan, y a igualdad la más antigua. Ordenar solo
+    // por antigüedad dejaba la cola tomada: diez tareas viejas para las que no existe ningún
+    // proveedor ocupaban el cupo de cada corrida para siempre y las nuevas no llegaban nunca
+    // a emparejarse. Así una tarea sin mercado sigue intentándose, pero cede el turno.
     pendientes = await getDb().query<{ id: string; code: string; proyecto: string }>(
       `select t.id, t.code, p.title as proyecto
          from public.project_tasks t
@@ -37,7 +42,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         where t.assignee_id is null
           and t.status in ('ready', 'open', 'matching')
           and p.status not in ('paused', 'cancelled', 'completed')
-        order by t.created_at asc
+        order by t.matching_rounds asc, t.created_at asc
         limit $1`,
       [MAXIMO_POR_CORRIDA],
     );

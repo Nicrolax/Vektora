@@ -214,6 +214,8 @@ export interface TareaDetalle {
   estimatedHours: number | null;
   assigneeId: string | null;
   assigneeNombre: string | null;
+  /** Rondas de emparejamiento sin adjudicar (vuelve a 0 al asignarse). */
+  matchingRounds: number;
 }
 
 export interface CandidaturaVista {
@@ -300,10 +302,11 @@ export async function obtenerTarea(
       estimated_hours: PgNumeric | null;
       assignee_id: string | null;
       assignee_nombre: string | null;
+      matching_rounds: number;
     }>(
       `select t.id, t.project_id, p.title as project_title, p.objective as project_objective,
               t.code, t.title, t.description, t.acceptance_criteria, t.required_skills, t.status,
-              t.budget, t.estimated_hours, t.assignee_id,
+              t.budget, t.estimated_hours, t.assignee_id, t.matching_rounds,
               coalesce(pr.display_name, pr.full_name) as assignee_nombre
          from public.project_tasks t
          join public.projects p on p.id = t.project_id
@@ -369,6 +372,7 @@ export async function obtenerTarea(
         estimatedHours: toNumber(fila.estimated_hours),
         assigneeId: fila.assignee_id,
         assigneeNombre: fila.assignee_nombre,
+        matchingRounds: fila.matching_rounds,
       },
       candidaturas: candidaturas.map((c) => ({
         id: c.id,
