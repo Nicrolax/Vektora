@@ -17,7 +17,7 @@ un servicio `pgvector/pgvector:pg16` vacío. Para hacerlo a mano, con Docker:
 ```bash
 docker run -d --name vk-verify -e POSTGRES_PASSWORD=verify -p 5433:5432 pgvector/pgvector:pg16
 P="docker exec -i vk-verify psql -U postgres -d postgres -v ON_ERROR_STOP=1"
-for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql          db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql          db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/seeds/01_skills.sql          db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql          db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql; do
+for f in db/00_plataforma.sql db/schema.sql db/migrations/0002_planner.sql          db/migrations/0003_provider_onboarding.sql db/migrations/0004_matching.sql          db/migrations/0005_qa.sql db/migrations/0007_escalada.sql db/migrations/0008_qa_cola.sql db/seeds/01_skills.sql          db/verify/01_comportamiento.sql db/verify/02_rls.sql db/verify/03_matching.sql          db/verify/04_qa.sql db/verify/05_escalada_y_cuotas.sql db/verify/06_qa_cola.sql; do
   $P < "$f" || break
 done
 docker rm -f vk-verify
@@ -117,3 +117,26 @@ Se ejecuta con `$P -f db/verify/05_escalada_y_cuotas.sql`, tras la migración `0
   reinicia a medianoche.
 - **Límite cero deshabilita la acción, no la abre.** Es el modo de fallo que importaba cerrar.
 - `anon` y `authenticated` **no pueden fabricarse cuota** ni tocar el contador de rondas.
+
+## FASE 8 — la cola del juez (13 comprobaciones más)
+
+Se ejecuta con `$P -f db/verify/06_qa_cola.sql`, tras la migración `0008_qa_cola.sql`. A
+diferencia de los archivos anteriores, cada comprobación se evalúa sola: avisa con
+`WARNING 'FALLO: …'` (que el CI busca) o `NOTICE 'OK: …'`.
+
+- Un entregable con **revisión pedida sale de la cola** y no se vuelve a tomar: ya tiene
+  veredicto, y lo que sigue es una versión nueva del proveedor. Antes se evaluaba la misma
+  versión en cada corrida del reloj, gastando una llamada al modelo cada vez.
+- Tras aprobarse la v2, **la tarea no deja nada en la cola**: la v1 no vuelve a juzgarse.
+- Una **versión superada no se toma** ni entra a la cola, aunque esté `pending`.
+- **Ningún veredicto saca a una tarea de `approved`**: `apply_qa_verdict` lo informa con
+  `task_updated = false` y el DAG no retrocede (la dependiente sigue `ready`).
+- Un **turno vigente no se roba**; un **turno abandonado** (más de `qa_claim_timeout()`, 15
+  minutos) **vuelve a la cola y se retoma**, con `previous_status = pending`, y al retomarlo
+  vuelve a ser exclusivo.
+- Un entregable en **`error` sigue reintentándose solo**.
+- `anon` y `authenticated` no tienen EXECUTE sobre la cola ni sobre `qa_claim_timeout()`.
+
+Control negativo: sin la `0008`, este archivo da cuatro `FALLO` (el entregable sigue en la
+cola, se retoma, la versión superada se toma y el DAG retrocede) y se corta en el turno
+abandonado.

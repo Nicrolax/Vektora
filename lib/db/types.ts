@@ -278,6 +278,7 @@ export interface DeliverableRow {
   qa_criteria_results: unknown[];
   qa_run_id: string | null;
   qa_evaluated_at: string | null;
+  qa_claimed_at: string | null;
   submitted_at: string;
   created_at: string;
   updated_at: string;

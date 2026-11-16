@@ -25,6 +25,11 @@
 --      ese entregable ya generó. Si un veredicto posterior contradice a otro, se AÑADE el
 --      evento contrario en vez de borrar el anterior; el saldo se reconstruye sumando, que
 --      es justo lo que un libro mayor debe permitir.
+--
+-- OJO: `claim_deliverable_for_qa`, `apply_qa_verdict` y `pending_qa_deliverables` se
+-- REEMPLAZAN en `0008_qa_cola.sql`. Las versiones de este archivo volvían a juzgar para
+-- siempre un entregable con revisión pedida y no recuperaban un turno abandonado. La 0008
+-- se aplica siempre después de esta.
 -- =========================================================================================
 
 -- =========================================================================================

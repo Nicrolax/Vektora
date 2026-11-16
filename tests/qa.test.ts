@@ -280,7 +280,7 @@ describe('turno y concurrencia', () => {
   });
 
   it('el ensayo devuelve el entregable a su estado ANTERIOR, no a pending', async () => {
-    const repository = new FakeRepository(claim({ previousStatus: 'revision_requested' }));
+    const repository = new FakeRepository(claim({ previousStatus: 'error' }));
     const { client } = fakeAi(verdicts(['pass', 'pass']));
     const result = await new QaJudge({ repository, ai: client, config }).judge({
       deliverableId: 'd-1',
@@ -290,7 +290,7 @@ describe('turno y concurrencia', () => {
     expect(result.judged).toBe(true);
     expect(result.decision?.qaStatus).toBe('approved');
     expect(repository.applications).toHaveLength(0);
-    expect(repository.released).toEqual([{ status: 'revision_requested', error: null }]);
+    expect(repository.released).toEqual([{ status: 'error', error: null }]);
   });
 });
 

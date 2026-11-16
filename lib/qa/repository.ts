@@ -90,9 +90,11 @@ export interface PendingDeliverable {
 /**
  * Estados a los que se puede devolver un turno tomado. No incluye los terminales: soltar un
  * entregable como `approved` sin pasar por `apply_qa_verdict` lo dejaría aprobado sin reseña
- * ni reputación, que es un estado del que nadie se recupera solo.
+ * ni reputación, que es un estado del que nadie se recupera solo. Tampoco
+ * `revision_requested`: desde la 0008 es un veredicto, no un estado desde el que se toma el
+ * turno, así que nunca es el «estado anterior» de un ensayo.
  */
-export type QaReleaseStatus = 'pending' | 'revision_requested' | 'error';
+export type QaReleaseStatus = 'pending' | 'error';
 
 export interface QaRepository {
   claim(deliverableId: string): Promise<QaClaimResult>;

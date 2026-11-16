@@ -65,7 +65,7 @@ const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   deliverables: [
     'task_id', 'provider_id', 'version', 'summary', 'content', 'artifacts', 'evidence',
     'qa_status', 'qa_score', 'qa_feedback', 'qa_criteria_results', 'qa_run_id',
-    'qa_evaluated_at', 'submitted_at',
+    'qa_evaluated_at', 'qa_claimed_at', 'submitted_at',
   ],
   reviews: ['task_id', 'deliverable_id', 'reviewer_id', 'reviewee_id', 'source', 'rating'],
   reputation_events: ['user_id', 'event_type', 'delta', 'weight', 'task_id', 'deliverable_id'],
