@@ -19,7 +19,7 @@ function Enviar() {
       <button
         type="submit"
         disabled={pending}
-        className="boton boton-primario degradado-marca w-full sm:w-auto"
+        className="boton boton-primario w-full sm:w-auto"
       >
         {pending ? 'Planificando…' : 'Crear y planificar'}
       </button>
@@ -30,7 +30,7 @@ function Enviar() {
           className="space-y-2 rounded-lg border border-[var(--color-borde)] bg-[var(--color-panel)] p-4"
         >
           <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-lienzo-alto)]">
-            <div className="degradado-marca h-full w-1/3 animate-[recorrer_1.5s_ease-in-out_infinite] rounded-full" />
+            <div className="h-full w-1/3 bg-[var(--color-acento)] animate-[recorrer_1.5s_ease-in-out_infinite] rounded-full" />
           </div>
           <p className="text-xs leading-relaxed text-[var(--color-apagado)]">
             Descomponiendo el objetivo en tareas, comprobando que el grafo no tenga ciclos,

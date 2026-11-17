@@ -28,14 +28,14 @@ export default async function Skills() {
 
       {error !== null && <Aviso tipo="error">{error}</Aviso>}
 
-      <Panel className="space-y-4 p-4">
+      <Panel className="space-y-4">
         <Titulo ayuda="El planificador elige skills de este catálogo al armar las tareas, y el emparejador las compara con las de cada proveedor.">
           Nueva skill
         </Titulo>
         <FormularioNuevaSkill />
       </Panel>
 
-      <Panel className="overflow-x-auto p-4">
+      <Panel className="overflow-x-auto">
         <p className="mb-3 text-xs text-[var(--color-apagado)]">{skills.length} skills en el catálogo.</p>
         <table className="w-full min-w-[44rem] text-sm">
           <thead>

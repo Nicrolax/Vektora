@@ -36,7 +36,7 @@ export default async function Buscar({ searchParams }: { searchParams: Promise<R
         </p>
       </header>
 
-      <Panel className="p-4">
+      <Panel>
         <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="space-y-1 text-xs text-[var(--color-apagado)] sm:col-span-2">
             Texto (título, descripción o proyecto)
@@ -79,7 +79,7 @@ export default async function Buscar({ searchParams }: { searchParams: Promise<R
             Solo sin asignar
           </label>
           <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
-            <button type="submit" className="boton boton-primario degradado-marca">
+            <button type="submit" className="boton boton-primario">
               Buscar
             </button>
             <Link href="/buscar" className="boton boton-suave">
@@ -92,19 +92,19 @@ export default async function Buscar({ searchParams }: { searchParams: Promise<R
       {error !== null && <Aviso tipo="error">{error}</Aviso>}
 
       {resultado !== null && (
-        <Panel className="p-4">
+        <Panel>
           <p className="text-xs text-[var(--color-apagado)]">
             {resultado.total === 0
               ? 'Sin resultados.'
               : `${resultado.total} tarea${resultado.total === 1 ? '' : 's'}${resultado.total > resultado.tareas.length ? ` (se muestran ${resultado.tareas.length})` : ''}`}
           </p>
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 divide-y divide-[var(--color-borde)]">
             {resultado.tareas.length === 0 && <Vacio>Ninguna tarea coincide con esos filtros.</Vacio>}
             {resultado.tareas.map((tarea) => (
               <Link
                 key={tarea.id}
                 href={`/tareas/${tarea.id}`}
-                className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-borde)] bg-[var(--color-panel-alto)] p-3 transition-colors hover:border-[var(--color-acento)]"
+                className="fila flex flex-wrap items-center gap-3"
               >
                 <div className="min-w-0 flex-1 space-y-1">
                   <p className="text-sm">

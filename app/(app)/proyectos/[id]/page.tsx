@@ -41,7 +41,7 @@ export default async function DetalleProyecto({ params }: { params: Promise<{ id
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-1.5">
-            <h1 className="text-xl font-semibold tracking-tight text-balance">{proyecto.title}</h1>
+            <h1 className="text-2xl font-semibold text-balance">{proyecto.title}</h1>
             <p className="max-w-2xl text-sm leading-relaxed text-[var(--color-apagado)]">{proyecto.objective}</p>
             {proyecto.description !== null && (
               <p className="max-w-2xl text-sm leading-relaxed text-[var(--color-tenue)]">{proyecto.description}</p>

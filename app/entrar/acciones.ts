@@ -56,6 +56,12 @@ export async function registrarse(formData: FormData): Promise<void> {
   const correo = validarCorreo(email, CORREO_ESTRICTO);
   if (!correo.valido) volverConError(correo.motivo ?? 'El correo no es válido.');
 
+  // El medidor y la confirmación del formulario son comodidad: la regla se vuelve a
+  // comprobar acá, porque una acción de servidor se puede invocar sin pasar por la página.
+  if (texto(formData, 'password') !== texto(formData, 'password_confirmacion')) {
+    volverConError('Las dos contraseñas no coinciden. Escribí la misma en ambos campos.');
+  }
+
   const rol = texto(formData, 'role');
   if (!esRol(rol)) volverConError('Elegí si querés publicar proyectos, ofrecer tu trabajo o ambas.');
 

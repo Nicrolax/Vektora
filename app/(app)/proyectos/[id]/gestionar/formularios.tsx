@@ -51,7 +51,7 @@ export function FormularioEdicion({
         </label>
       </fieldset>
       <Resultado estado={estado} />
-      <button type="submit" disabled={pendiente} className="boton boton-primario degradado-marca">
+      <button type="submit" disabled={pendiente} className="boton boton-primario">
         {pendiente ? 'Guardando…' : 'Guardar cambios'}
       </button>
     </form>

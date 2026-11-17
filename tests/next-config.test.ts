@@ -58,13 +58,13 @@ describe('next.config — redirección sin sesión', () => {
     }
   });
 
-  it('cubre la raíz y todas las secciones privadas, pero no /entrar ni /health', async () => {
+  it('cubre todas las secciones privadas, pero no la raíz (presentación), /entrar ni /health', async () => {
     const reglas = (await config.redirects?.()) ?? [];
     const fuentes = reglas.map((r) => r.source).join(' ');
-    for (const s of ['panel', 'proyectos', 'tareas', 'trabajo', 'proveedor', 'buscar', 'reportes', 'admin']) {
+    for (const s of ['panel', 'proyectos', 'tareas', 'trabajo', 'proveedor', 'buscar', 'reportes', 'admin', 'perfil']) {
       expect(fuentes).toContain(s);
     }
-    expect(reglas.some((r) => r.source === '/')).toBe(true);
+    expect(reglas.some((r) => r.source === '/')).toBe(false);
     expect(fuentes).not.toMatch(/entrar|health|api/);
   });
 });

@@ -37,7 +37,7 @@ export default async function Cuentas({ searchParams }: { searchParams: Promise<
 
       {error !== null && <Aviso tipo="error">{error}</Aviso>}
 
-      <Panel className="overflow-x-auto p-4">
+      <Panel className="overflow-x-auto">
         <p className="mb-3 text-xs text-[var(--color-apagado)]">
           {cuentas.length} cuenta{cuentas.length === 1 ? '' : 's'}. Roles: {Object.values(NOMBRE_ROL).join(' · ')}.
         </p>

@@ -67,7 +67,8 @@ const config: NextConfig = {
     return [{ source: '/:path*', headers: cabecerasDeSeguridad }];
   },
   /**
-   * Sin cookie de sesión, las rutas privadas van a /entrar ANTES de renderizar. Sin esto,
+   * Sin cookie de sesión, las rutas privadas van a /entrar ANTES de renderizar. La raíz
+   * no: sin sesión muestra la presentación pública (app/page.tsx). Sin esto,
    * el `redirect()` de las páginas responde 307 con el cascarón HTML de la página (5-6 KB;
    * ZAP lo marca como «Big Redirect»). No reemplaza a `requireUser()`: una cookie vencida
    * o falsa llega igual a la página, que la verifica y redirige como siempre.
@@ -76,9 +77,8 @@ const config: NextConfig = {
     // El mismo nombre que NOMBRE_COOKIE (lib/auth/cookie.ts); tests/next-config.test.ts lo vigila.
     const sinSesion = [{ type: 'cookie' as const, key: 'vektora_sesion' }];
     return [
-      { source: '/', missing: sinSesion, destination: '/entrar', permanent: false },
       {
-        source: '/:seccion(panel|proyectos|tareas|trabajo|proveedor|buscar|reportes|admin)/:resto*',
+        source: '/:seccion(panel|proyectos|tareas|trabajo|proveedor|buscar|reportes|admin|perfil)/:resto*',
         missing: sinSesion,
         destination: '/entrar',
         permanent: false,

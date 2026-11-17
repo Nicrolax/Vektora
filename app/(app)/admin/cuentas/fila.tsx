@@ -21,7 +21,7 @@ export function FilaCuenta({ cuenta, esYo }: { cuenta: CuentaAdmin; esYo: boolea
     <tr className="border-b border-[var(--color-borde)] align-top last:border-0" style={{ opacity: suspendida ? 0.65 : 1 }}>
       <td className="px-2 py-2.5">
         <p>{cuenta.nombre ?? 'sin nombre'}{esYo && <span className="ml-1.5 text-xs text-[var(--color-apagado)]">(vos)</span>}</p>
-        <p className="text-xs text-[var(--color-apagado)]">{cuenta.email ?? '—'}</p>
+        <p className="text-xs text-[var(--color-apagado)]">{cuenta.email ?? 'Sin correo'}</p>
         {estado.mensaje !== null && (
           <p className="mt-1 text-xs" style={{ color: estado.ok ? 'var(--color-aprobada)' : 'var(--color-fallida)' }} role={estado.ok ? 'status' : 'alert'}>
             {estado.mensaje}

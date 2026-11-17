@@ -619,3 +619,23 @@ export async function trabajoDelProveedor(
     };
   });
 }
+
+// --- Perfil propio ----------------------------------------------------------------------------
+
+export interface MiPerfil {
+  nombre: string | null;
+  bio: string | null;
+  sitioWeb: string | null;
+}
+
+export async function leerMiPerfil(userId: string): Promise<MiPerfil> {
+  const fila = await leer(userId, (tx) =>
+    tx.one<{ nombre: string | null; bio: string | null; website_url: string | null }>(
+      `select coalesce(display_name, full_name) as nombre, bio, website_url
+         from public.profiles
+        where user_id = $1`,
+      [userId],
+    ),
+  );
+  return { nombre: fila?.nombre ?? null, bio: fila?.bio ?? null, sitioWeb: fila?.website_url ?? null };
+}

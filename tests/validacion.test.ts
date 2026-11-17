@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   diversidadDePalabras,
+  evaluarContrasena,
   diversidadLexica,
   validarCorreo,
   validarPresupuesto,
@@ -160,5 +161,24 @@ describe('validarPresupuesto', () => {
 
   it('los límites son configurables', () => {
     expect(validarPresupuesto(10, { minimo: 5 }).valido).toBe(true);
+  });
+});
+
+describe('evaluarContrasena', () => {
+  it('sube con largo y variedad', () => {
+    expect(evaluarContrasena('abcdefgh').nivel).toBe(1);
+    expect(evaluarContrasena('clave-segura').nivel).toBe(2);
+    expect(evaluarContrasena('Clave-Segura-9').nivel).toBe(4);
+  });
+
+  it('anula lo trivial: comunes, repeticiones y el propio correo', () => {
+    expect(evaluarContrasena('password1').nivel).toBe(0);
+    expect(evaluarContrasena('zzzzzzzzzzzzzzzz').nivel).toBe(0);
+    expect(evaluarContrasena('Martin.QA-2026!', 'martin.qa@vektora.test').nivel).toBe(0);
+  });
+
+  it('da un consejo hasta llegar a fuerte', () => {
+    expect(evaluarContrasena('corta').consejo).toMatch(/8 caracteres/);
+    expect(evaluarContrasena('Clave-Segura-9-mas-larga').consejo).toBeNull();
   });
 });

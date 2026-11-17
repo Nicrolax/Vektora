@@ -35,7 +35,7 @@ function Enviar() {
     <button
       type="submit"
       disabled={pending}
-      className="boton boton-primario degradado-marca w-full sm:w-auto"
+      className="boton boton-primario w-full sm:w-auto"
     >
       {pending ? 'Registrando…' : 'Guardar perfil'}
     </button>

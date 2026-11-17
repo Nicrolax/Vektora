@@ -22,7 +22,7 @@ export default async function AltaProveedor() {
         >
           ← Mi trabajo
         </Link>
-        <h1 className="text-xl font-semibold tracking-tight">
+        <h1 className="text-2xl font-semibold">
           {perfil === null ? 'Ofrecerme como proveedor' : 'Mi perfil de proveedor'}
         </h1>
         <p className="text-sm leading-relaxed text-[var(--color-apagado)]">
@@ -31,7 +31,7 @@ export default async function AltaProveedor() {
         </p>
       </header>
 
-      <Panel className="p-5">
+      <Panel>
         <FormularioProveedor
           inicial={
             perfil === null

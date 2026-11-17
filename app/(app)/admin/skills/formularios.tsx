@@ -26,7 +26,7 @@ export function FormularioNuevaSkill() {
         </label>
       </div>
       {estado.mensaje !== null && <Aviso tipo={estado.ok ? 'ok' : 'error'}>{estado.mensaje}</Aviso>}
-      <button type="submit" disabled={pendiente} className="boton boton-primario degradado-marca">
+      <button type="submit" disabled={pendiente} className="boton boton-primario">
         {pendiente ? 'Creando…' : 'Crear skill'}
       </button>
     </form>

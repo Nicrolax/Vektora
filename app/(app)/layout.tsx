@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { NOMBRE_ROL, tienePermiso } from '@/lib/auth';
 import { requireUser } from '@/lib/auth/session';
-import { cerrarSesion } from '@/app/entrar/acciones';
-import { Fondo, Logotipo } from '@/components/ui/marca';
+import { Logotipo } from '@/components/ui/marca';
+import { MenuCuenta } from '@/components/ui/menu-cuenta';
 import { Navegacion, type Seccion } from '@/components/ui/navegacion';
 
 /**
@@ -22,32 +22,28 @@ export default async function LayoutAplicacion({ children }: { children: React.R
 
   return (
     <div className="min-h-dvh">
-      <Fondo />
-
-      <header className="sticky top-0 z-30 border-b border-[var(--color-borde)]/70 bg-[var(--color-lienzo)]/70 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3 sm:px-5">
+      <header className="sticky top-0 z-30 border-b border-[var(--color-borde)] bg-[var(--color-lienzo)]">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-5">
           <Link href="/panel" className="shrink-0 transition-opacity hover:opacity-80">
             <Logotipo />
           </Link>
 
-          <Navegacion secciones={secciones} />
+          <div className="hidden h-full md:flex">
+            <Navegacion secciones={secciones} />
+          </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <span className="hidden max-w-[14rem] truncate text-right text-xs leading-tight text-[var(--color-apagado)] md:inline">
-              {user.nombre ?? user.email ?? user.id}
-              <br />
-              <span className="text-[0.68rem]">{NOMBRE_ROL[user.role]}</span>
-            </span>
-            <form action={cerrarSesion}>
-              <button type="submit" className="boton boton-suave !px-3 !py-1.5 text-xs">
-                Salir
-              </button>
-            </form>
+          <div className="ml-auto shrink-0">
+            <MenuCuenta
+              nombre={user.nombre ?? user.email ?? 'Tu cuenta'}
+              email={user.email}
+              rol={NOMBRE_ROL[user.role]}
+              secciones={secciones}
+            />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-9 sm:px-5">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 py-10 sm:px-5">{children}</main>
     </div>
   );
 }

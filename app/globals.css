@@ -84,6 +84,22 @@
     letter-spacing: -0.022em;
   }
 
+  /*
+   * Mano sobre todo lo que se puede accionar. Tailwind 4 deja los botones con la flecha por
+   * defecto; acá se devuelve la mano a botones, enlaces, pestañas, menús y controles.
+   */
+  a[href],
+  button:not(:disabled),
+  summary,
+  select:not(:disabled),
+  label:has(> input:not(:disabled)),
+  input:is([type='checkbox'], [type='radio'], [type='submit'], [type='button'], [type='file']):not(:disabled),
+  [role='button'],
+  [role='tab'],
+  [role='menuitem'] {
+    cursor: pointer;
+  }
+
   /* El foco SIEMPRE visible. Es el requisito de accesibilidad por teclado. */
   :focus-visible {
     outline: 2px solid var(--color-acento-claro);
@@ -174,7 +190,28 @@
 
   /* --- Superficies -------------------------------------------------------------------- */
 
-  /* Tarjeta que reacciona al cursor: sube 2 px y el borde cobra vida. Nada más. */
+  /*
+   * Sección: una línea arriba y aire, no una caja. Una pantalla llena de tarjetas con borde
+   * pone todo al mismo nivel; el borde superior agrupa sin competir con el contenido.
+   */
+  .seccion {
+    border-top: 1px solid var(--color-borde);
+    padding-top: 1.5rem;
+  }
+
+  /* Fila de lista navegable: se ilumina al pasar el cursor, sin recuadro propio. */
+  .fila {
+    margin-inline: -0.75rem;
+    padding: 0.85rem 0.75rem;
+    border-radius: 10px;
+    transition: background-color 0.16s var(--ease-suave);
+  }
+
+  .fila:hover {
+    background-color: var(--color-panel);
+  }
+
+  /* Tarjeta de la portada y el acceso: sube 2 px y el borde cobra vida. Dentro de la aplicación, `.seccion`. */
   .tarjeta {
     background-color: var(--color-panel);
     border: 1px solid var(--color-borde);
@@ -252,6 +289,7 @@
   }
 
   .boton-primario {
+    background-color: var(--color-acento);
     color: oklch(0.14 0.02 275);
     border: none;
   }

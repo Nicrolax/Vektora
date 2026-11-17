@@ -21,20 +21,19 @@ export function Insignia({ estado, tipo = 'tarea' }: { estado: string; tipo?: 't
   );
 }
 
+/** Bloque de una página: separado por una línea y aire, no encerrado en una caja. */
 export function Panel({
   children,
   className = '',
-  vivo = false,
   retraso = 0,
 }: {
   children: React.ReactNode;
   className?: string;
-  vivo?: boolean;
   retraso?: number;
 }) {
   return (
     <section
-      className={`tarjeta entra ${vivo ? 'tarjeta-viva' : ''} ${className}`}
+      className={`seccion entra ${className}`}
       style={retraso > 0 ? { animationDelay: `${retraso}ms` } : undefined}
     >
       {children}
@@ -45,9 +44,9 @@ export function Panel({
 export function Titulo({ children, ayuda }: { children: React.ReactNode; ayuda?: string }) {
   return (
     <div className="space-y-1">
-      <h2 className="text-sm font-semibold">{children}</h2>
+      <h2 className="text-base font-semibold">{children}</h2>
       {ayuda !== undefined && (
-        <p className="text-xs leading-relaxed text-[var(--color-apagado)]">{ayuda}</p>
+        <p className="max-w-[65ch] text-xs leading-relaxed text-[var(--color-apagado)]">{ayuda}</p>
       )}
     </div>
   );
@@ -56,18 +55,18 @@ export function Titulo({ children, ayuda }: { children: React.ReactNode; ayuda?:
 export function Dato({ etiqueta, valor }: { etiqueta: string; valor: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <dt className="text-[0.7rem] tracking-wide text-[var(--color-apagado)] uppercase">
+      <dt className="text-xs text-[var(--color-apagado)]">
         {etiqueta}
       </dt>
-      <dd className="text-sm tabular-nums">{valor}</dd>
+      <dd className="text-lg font-medium tabular-nums">{valor}</dd>
     </div>
   );
 }
 
 export function Vacio({ children, accion }: { children: React.ReactNode; accion?: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-[var(--color-borde)] px-6 py-12 text-center">
-      <p className="max-w-sm text-sm leading-relaxed text-balance text-[var(--color-apagado)]">
+    <div className="flex flex-col items-start gap-4 py-6">
+      <p className="max-w-[60ch] text-sm leading-relaxed text-[var(--color-apagado)]">
         {children}
       </p>
       {accion}
@@ -84,12 +83,8 @@ export function EnlaceBoton({
   children: React.ReactNode;
   variante?: 'primario' | 'suave';
 }) {
-  const clases =
-    variante === 'primario'
-      ? 'boton boton-primario degradado-marca'
-      : 'boton boton-suave';
   return (
-    <Link href={href} className={clases}>
+    <Link href={href} className={variante === 'primario' ? 'boton boton-primario' : 'boton boton-suave'}>
       {children}
     </Link>
   );
@@ -97,7 +92,7 @@ export function EnlaceBoton({
 
 /** Dinero con el formato de Uruguay y el símbolo de la moneda del proyecto. */
 export function Dinero({ valor, moneda = 'USD' }: { valor: number | null; moneda?: string }) {
-  if (valor === null) return <span className="text-[var(--color-apagado)]">—</span>;
+  if (valor === null) return <span className="text-[var(--color-apagado)]">Sin dato</span>;
   return (
     <span className="tabular-nums">
       {new Intl.NumberFormat('es-UY', {
@@ -122,7 +117,7 @@ const FORMATO_FECHA = new Intl.DateTimeFormat('es-UY', {
 export function Fecha({ valor }: { valor: string | null }) {
   const fecha = valor === null ? null : new Date(valor);
   if (fecha === null || Number.isNaN(fecha.getTime())) {
-    return <span className="text-[var(--color-apagado)]">—</span>;
+    return <span className="text-[var(--color-apagado)]">Sin dato</span>;
   }
   return (
     <time dateTime={fecha.toISOString()} className="tabular-nums">
@@ -147,9 +142,7 @@ export function Avance({ porcentaje, etiqueta }: { porcentaje: number; etiqueta:
         style={{
           width: `${porcentaje}%`,
           background:
-            porcentaje === 100
-              ? 'var(--color-aprobada)'
-              : 'linear-gradient(90deg, var(--color-acento), var(--color-acento-fin))',
+            porcentaje === 100 ? 'var(--color-aprobada)' : 'var(--color-acento)',
         }}
       />
     </div>

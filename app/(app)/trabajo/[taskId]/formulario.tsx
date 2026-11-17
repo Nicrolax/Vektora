@@ -18,7 +18,7 @@ function Enviar({ confirmando }: { confirmando: boolean }) {
     <button
       type="submit"
       disabled={pending}
-      className="boton boton-primario degradado-marca w-full sm:w-auto"
+      className="boton boton-primario w-full sm:w-auto"
     >
       {pending ? 'Enviando…' : confirmando ? 'Entregar igual' : 'Entregar para evaluación'}
     </button>
@@ -89,11 +89,8 @@ export function FormularioEntrega({
           return (
             <div
               key={criterio.id}
-              className="space-y-2 rounded-lg border p-3"
-              style={{
-                borderColor: falta ? 'var(--color-revision)' : 'var(--color-borde)',
-                backgroundColor: 'var(--color-panel)',
-              }}
+              className="space-y-2 border-l-2 py-1 pl-4"
+              style={{ borderColor: falta ? 'var(--color-revision)' : 'var(--color-borde)' }}
             >
               <div className="space-y-1">
                 <p className="text-sm leading-relaxed">

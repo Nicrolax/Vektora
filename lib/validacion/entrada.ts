@@ -201,3 +201,75 @@ export function validarPresupuesto(valor: unknown, opciones: OpcionesPresupuesto
 
   return BIEN;
 }
+
+// --- Contraseñas ---------------------------------------------------------------------------
+
+/** Las que primero se prueban en un ataque de diccionario. No es exhaustivo ni pretende serlo. */
+const CONTRASENAS_COMUNES = new Set([
+  '12345678',
+  '123456789',
+  '1234567890',
+  'password',
+  'password1',
+  'contraseña',
+  'contrasena',
+  'qwertyui',
+  'qwerty123',
+  'iloveyou',
+  'abc12345',
+  '11111111',
+  '00000000',
+  'asdfghjk',
+  'vektora1',
+  'vektora123',
+]);
+
+export const NIVELES_CONTRASENA = ['Muy débil', 'Débil', 'Aceptable', 'Buena', 'Fuerte'] as const;
+
+/** Nivel mínimo para crear una cuenta (índice en `NIVELES_CONTRASENA`). */
+export const NIVEL_MINIMO_CONTRASENA = 2;
+
+export interface FuerzaContrasena {
+  /** 0 a 4, índice en `NIVELES_CONTRASENA`. */
+  nivel: number;
+  etiqueta: (typeof NIVELES_CONTRASENA)[number];
+  /** Qué hacer para subir de nivel, o `null` si ya es fuerte. */
+  consejo: string | null;
+}
+
+/**
+ * Fuerza de una contraseña. La usan el medidor del formulario (mientras se escribe) y el
+ * servicio de alta (que rechaza por debajo de `NIVEL_MINIMO_CONTRASENA`): la misma regla en
+ * los dos lados, así lo que el medidor aprueba el servidor no lo rechaza.
+ *
+ * ponytail: heurística de largo + variedad + lista corta de comunes. Si hiciera falta medir
+ * entropía real, zxcvbn; pesa ~400 kB y para este umbral no cambia el resultado.
+ */
+export function evaluarContrasena(contrasena: string, correo = ''): FuerzaContrasena {
+  const largo = [...contrasena].length;
+  const clases = [/[a-zñ]/, /[A-ZÑ]/, /\d/, /[^\p{L}\d]/u].filter((re) => re.test(contrasena)).length;
+  const usuario = correo.split('@')[0]?.toLowerCase() ?? '';
+
+  const trivial =
+    CONTRASENAS_COMUNES.has(contrasena.toLowerCase()) ||
+    /^(.)\1*$/.test(contrasena) ||
+    (usuario.length >= 4 && contrasena.toLowerCase().includes(usuario));
+
+  let nivel = 0;
+  if (!trivial) {
+    if (largo >= 8) nivel += 1;
+    if (largo >= 12) nivel += 1;
+    if (clases >= 3) nivel += 1;
+    if (largo >= 16 || (largo >= 10 && clases === 4)) nivel += 1;
+  }
+  nivel = Math.min(nivel, 4);
+
+  let consejo: string | null = null;
+  if (trivial) consejo = 'Es demasiado fácil de adivinar: no uses tu correo, secuencias ni palabras comunes.';
+  else if (largo < 8) consejo = 'Usá al menos 8 caracteres.';
+  else if (largo < 12) consejo = 'Alargala a 12 caracteres o más.';
+  else if (clases < 3) consejo = 'Mezclá mayúsculas, números o símbolos.';
+  else if (nivel < 4) consejo = 'Una frase de varias palabras la vuelve todavía más fuerte.';
+
+  return { nivel, etiqueta: NIVELES_CONTRASENA[nivel] ?? 'Muy débil', consejo };
+}

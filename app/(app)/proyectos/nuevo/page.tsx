@@ -17,17 +17,17 @@ export default async function NuevoProyecto() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-xl font-semibold tracking-tight">Nuevo proyecto</h1>
+        <h1 className="text-2xl font-semibold">Nuevo proyecto</h1>
         <p className="text-sm text-[var(--color-apagado)]">
           Solo hacen falta dos cosas. El resto lo decide el sistema.
         </p>
       </header>
 
-      <Panel className="p-5">
+      <Panel>
         <FormularioProyecto />
       </Panel>
 
-      <Panel className="p-5">
+      <Panel>
         <h2 className="text-sm font-semibold">Qué va a pasar al enviar</h2>
         <ol className="mt-3 space-y-2.5 text-sm text-[var(--color-tenue)]">
           {[

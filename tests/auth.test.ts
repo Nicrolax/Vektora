@@ -211,6 +211,18 @@ describe('AuthService', () => {
     );
   });
 
+  it('rechaza contraseñas débiles con la misma regla que el medidor del formulario', async () => {
+    const servicio = new AuthService(new CuentasEnMemoria(), 4);
+    for (const debil of ['abcdefgh', '12345678', 'aaaaaaaaaaaa', 'ana.perez-2026']) {
+      await expect(
+        servicio.registrar({ email: 'ana.perez@ejemplo.com', contrasena: debil, role: 'client' }),
+      ).rejects.toBeInstanceOf(ValidacionError);
+    }
+    await expect(
+      servicio.registrar({ email: 'ana.perez@ejemplo.com', contrasena: 'Demo-Vektora-2026', role: 'client' }),
+    ).resolves.toMatchObject({ email: 'ana.perez@ejemplo.com' });
+  });
+
   it('rehace al entrar un hash con coste menor al actual', async () => {
     const repo = new CuentasEnMemoria();
     await new AuthService(repo, 4).registrar({ email: 'a@ejemplo.com', contrasena: 'clave-segura', role: 'client' });

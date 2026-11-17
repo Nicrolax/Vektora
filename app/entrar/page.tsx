@@ -1,24 +1,20 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { Fondo, Logotipo } from '@/components/ui/marca';
-import { FormularioAcceso } from './formulario';
+import { FormularioAcceso, type Rol } from './formulario';
 
 export const metadata = { title: 'Entrar' };
-
-const PASOS = [
-  { titulo: 'Describís el resultado', texto: 'Una frase y un presupuesto. Nada más.' },
-  { titulo: 'Se reparte en tareas', texto: 'Con dependencias y criterios de aceptación.' },
-  { titulo: 'Se adjudica sola', texto: 'A quien mejor encaja, con la explicación a la vista.' },
-  { titulo: 'Se verifica sola', texto: 'Criterio por criterio, citando la evidencia.' },
-];
 
 export default async function Entrar({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; aviso?: string }>;
+  searchParams: Promise<{ error?: string; aviso?: string; alta?: string }>;
 }) {
   if ((await getSessionUser()) !== null) redirect('/panel');
   const params = await searchParams;
+  const alta: Rol | null =
+    params.alta === 'client' || params.alta === 'provider' || params.alta === 'both' ? params.alta : null;
 
   return (
     <>
@@ -27,7 +23,13 @@ export default async function Entrar({
       <main className="mx-auto grid min-h-dvh max-w-6xl items-center gap-12 px-5 py-14 lg:grid-cols-[1.05fr_26rem] lg:gap-20 lg:py-20">
         {/* ---- Presentación ---- */}
         <section className="entra space-y-9">
-          <Logotipo tamano={24} />
+          <Link
+            href="/"
+            className="flex w-fit items-center gap-2 text-sm text-[var(--color-apagado)] transition-colors hover:text-[var(--color-texto)]"
+          >
+            <span aria-hidden>←</span> Volver al inicio
+          </Link>
+          <div><Logotipo tamano={24} /></div>
 
           <div className="space-y-5">
             <h1 className="text-4xl leading-[1.05] font-semibold text-balance sm:text-5xl lg:text-6xl">
@@ -41,28 +43,6 @@ export default async function Entrar({
               esperar a nadie.
             </p>
           </div>
-
-          <ol className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-            {PASOS.map((paso, indice) => (
-              <li
-                key={paso.titulo}
-                className="entra flex gap-3.5"
-                style={{ animationDelay: `${120 + indice * 70}ms` }}
-              >
-                <span
-                  aria-hidden
-                  className="degradado-marca mt-1 h-7 w-[3px] shrink-0 rounded-full"
-                  style={{ opacity: 1 - indice * 0.16 }}
-                />
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium">{paso.titulo}</p>
-                  <p className="text-[0.8rem] leading-relaxed text-[var(--color-apagado)]">
-                    {paso.texto}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
         </section>
 
         {/* ---- Acceso ---- */}
@@ -70,13 +50,6 @@ export default async function Entrar({
           className="entra tarjeta w-full p-6 sm:p-7"
           style={{ animationDelay: '160ms', backdropFilter: 'blur(12px)' }}
         >
-          <div className="mb-6 space-y-1.5">
-            <h2 className="text-lg font-semibold">Entrá o creá tu cuenta</h2>
-            <p className="text-[0.8rem] leading-relaxed text-[var(--color-apagado)]">
-              Si es tu primera vez, abrí <strong>Crear una cuenta</strong> y elegí qué vas a hacer.
-            </p>
-          </div>
-
           {params.error !== undefined && (
             <p
               role="alert"
@@ -104,7 +77,7 @@ export default async function Entrar({
             </p>
           )}
 
-          <FormularioAcceso />
+          <FormularioAcceso alta={alta} />
         </section>
       </main>
     </>

@@ -26,7 +26,7 @@ export default async function PanelProveedor() {
   if (perfil === null) {
     return (
       <div className="mx-auto max-w-xl space-y-5 py-10 text-center">
-        <h1 className="text-xl font-semibold tracking-tight">Todavía no ofrecés tu trabajo</h1>
+        <h1 className="text-2xl font-semibold">Todavía no ofrecés tu trabajo</h1>
         <p className="text-sm leading-relaxed text-[var(--color-apagado)]">
           Creá tu perfil de proveedor y el sistema empezará a compararlo con cada tarea que
           entre. No hay que postularse a nada: si encajás, te llega.
@@ -46,7 +46,7 @@ export default async function PanelProveedor() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight">Mi trabajo</h1>
+          <h1 className="text-2xl font-semibold">Mi trabajo</h1>
           <p className="text-sm text-[var(--color-apagado)]">{perfil.headline}</p>
         </div>
         <EnlaceBoton href="/proveedor/alta">Editar perfil</EnlaceBoton>
@@ -62,7 +62,7 @@ export default async function PanelProveedor() {
         </p>
       )}
 
-      <Panel className="p-4">
+      <Panel>
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Dato
             etiqueta="Reputación"
@@ -79,11 +79,11 @@ export default async function PanelProveedor() {
         </dl>
       </Panel>
 
-      <Panel className="p-4">
+      <Panel>
         <Titulo ayuda="Adjudicadas automáticamente: ninguna hizo falta postularse.">
           Tareas asignadas
         </Titulo>
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 divide-y divide-[var(--color-borde)]">
           {misTareas.length === 0 && (
             <Vacio>
               Todavía no te adjudicaron ninguna tarea. El emparejador revisa periódicamente las
@@ -97,7 +97,7 @@ export default async function PanelProveedor() {
             return (
               <div
                 key={tarea.id}
-                className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-borde)] bg-[var(--color-panel-alto)] p-3"
+                className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"
               >
                 <div className="min-w-0 flex-1 space-y-1">
                   <Link href={`/tareas/${tarea.id}`} className="block text-sm hover:underline">
@@ -122,7 +122,7 @@ export default async function PanelProveedor() {
                 {puedeEntregar && (
                   <Link
                     href={`/trabajo/${tarea.id}`}
-                    className="boton boton-primario degradado-marca !px-3 !py-1.5 !text-xs"
+                    className="boton boton-primario !px-3 !py-1.5 !text-xs"
                   >
                     Entregar
                   </Link>
@@ -133,7 +133,7 @@ export default async function PanelProveedor() {
         </div>
       </Panel>
 
-      <Panel className="p-4">
+      <Panel>
         <Titulo ayuda="Registro inmutable: cualquier puntuación se reconstruye sumando estos eventos.">
           Historial de reputación
         </Titulo>

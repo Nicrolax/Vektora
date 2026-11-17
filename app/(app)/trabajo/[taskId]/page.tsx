@@ -31,12 +31,12 @@ export default async function Workspace({ params }: { params: Promise<{ taskId: 
           ← {tarea.code} · {tarea.title}
         </Link>
         <div className="space-y-2">
-          <h1 className="text-xl font-semibold tracking-tight text-balance">Entregar trabajo</h1>
+          <h1 className="text-2xl font-semibold text-balance">Entregar trabajo</h1>
           <Insignia estado={tarea.status} />
         </div>
       </header>
 
-      <Panel className="p-4">
+      <Panel>
         <p className="text-xs text-[var(--color-apagado)]">Contexto del proyecto</p>
         <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-tenue)]">{tarea.projectObjective}</p>
         {tarea.description !== null && (
@@ -44,12 +44,12 @@ export default async function Workspace({ params }: { params: Promise<{ taskId: 
         )}
         <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-[var(--color-borde)] pt-4 sm:grid-cols-3">
           <Dato etiqueta="Pago" valor={<Dinero valor={tarea.budget} />} />
-          <Dato etiqueta="Esfuerzo" valor={`${tarea.estimatedHours ?? '—'} h`} />
+          <Dato etiqueta="Esfuerzo" valor={tarea.estimatedHours === null ? 'Sin estimar' : `${tarea.estimatedHours} h`} />
           <Dato etiqueta="Criterios" valor={String(tarea.acceptanceCriteria.length)} />
         </dl>
       </Panel>
 
-      <Panel className="p-5">
+      <Panel>
         <FormularioEntrega taskId={taskId} criterios={tarea.acceptanceCriteria} />
       </Panel>
 

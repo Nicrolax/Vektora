@@ -29,11 +29,11 @@ export default async function GestionarProyecto({ params }: { params: Promise<{ 
         >
           ← {proyecto.title}
         </Link>
-        <h1 className="text-xl font-semibold tracking-tight">Gestionar proyecto</h1>
+        <h1 className="text-2xl font-semibold">Gestionar proyecto</h1>
         <p className="text-sm text-[var(--color-apagado)]">Estado actual: {presentarProyecto(proyecto.status)}</p>
       </header>
 
-      <Panel className="space-y-4 p-5">
+      <Panel className="space-y-4">
         <Titulo ayuda="El objetivo y las tareas los fijó el planificador y no se editan: cambiarlos invalidaría lo ya adjudicado.">
           Datos del proyecto
         </Titulo>
@@ -43,14 +43,14 @@ export default async function GestionarProyecto({ params }: { params: Promise<{ 
         />
       </Panel>
 
-      <Panel className="space-y-4 p-5">
+      <Panel className="space-y-4">
         <Titulo ayuda="Pausado, el emparejador no adjudica tareas nuevas. Cancelado es definitivo y conserva el historial.">
           Estado
         </Titulo>
         <FormularioEstado projectId={id} estado={proyecto.status} />
       </Panel>
 
-      <Panel className="space-y-4 p-5">
+      <Panel className="space-y-4">
         <Titulo ayuda="Borra el proyecto y sus tareas. Si alguna tarea ya movió reputación, no se puede: cancelalo.">
           Eliminar
         </Titulo>

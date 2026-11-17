@@ -206,7 +206,7 @@ Los umbrales son **medidos, no puestos a ojo**. No cambiarlos sin volver a medir
   `qa_criteria_results`, `qa_feedback`, `planner_metadata.corrections`, `ai_runs`).
 - Interfaz, rutas, mensajes y comentarios en **español**. Los mensajes de error dicen en
   segunda persona **qué hacer**, no solo que algo es inválido.
-- Sistema visual en `app/globals.css` (`oklch`, primitivas `.tarjeta`, `.boton`, `.campo`…).
+- Sistema visual en `app/globals.css` (`oklch`, primitivas `.seccion`, `.fila`, `.boton`, `.campo`…; `.tarjeta` solo en portada y acceso).
   El color de estado es un dato; el de marca es violeta-magenta, fuera de la gama de estados.
   Animaciones ≤ 260 ms y respetando `prefers-reduced-motion`. Tipografía del sistema, sin
   `next/font/google`.

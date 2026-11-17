@@ -22,7 +22,7 @@ export default async function PanelCliente({
     return (
       <div className="mx-auto max-w-xl space-y-5 py-10 text-center">
         {aviso !== undefined && <Aviso tipo="info">{aviso}</Aviso>}
-        <h1 className="text-xl font-semibold tracking-tight">Tu cuenta es de proveedor</h1>
+        <h1 className="text-2xl font-semibold">Tu cuenta es de proveedor</h1>
         <p className="text-sm leading-relaxed text-[var(--color-apagado)]">
           Las tareas te llegan solas cuando encajás. Revisá lo que tenés asignado o buscá tareas
           abiertas.
@@ -66,58 +66,53 @@ export default async function PanelCliente({
 
       {proyectos.length === 0 && error === null && (
         <div className="entra" style={{ animationDelay: '80ms' }}>
-          <Vacio
-            accion={
-              <EnlaceBoton href="/proyectos/nuevo" variante="primario">
-                Crear el primero
-              </EnlaceBoton>
-            }
-          >
+          <Vacio>
             Todavía no tenés ningún proyecto. Escribí en una frase qué necesitás y mirá cómo se
             arma el grafo de tareas.
           </Vacio>
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {proyectos.map((proyecto, indice) => {
-          const avance =
-            proyecto.totalTareas === 0 ? 0 : Math.round((proyecto.aprobadas / proyecto.totalTareas) * 100);
+      {proyectos.length > 0 && (
+        <ul className="divide-y divide-[var(--color-borde)] border-y border-[var(--color-borde)]">
+          {proyectos.map((proyecto, indice) => {
+            const avance =
+              proyecto.totalTareas === 0 ? 0 : Math.round((proyecto.aprobadas / proyecto.totalTareas) * 100);
 
-          return (
-            <Link
-              key={proyecto.id}
-              href={`/proyectos/${proyecto.id}`}
-              className="tarjeta tarjeta-viva entra block p-5"
-              style={{ animationDelay: `${60 + indice * 55}ms` }}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <h2 className="text-[0.95rem] leading-snug font-medium text-balance">{proyecto.title}</h2>
-                <span className="shrink-0 rounded-full bg-[var(--color-lienzo-alto)] px-2.5 py-1 text-[0.7rem] text-[var(--color-apagado)]">
-                  {presentarProyecto(proyecto.status)}
-                </span>
-              </div>
+            return (
+              <li key={proyecto.id} className="entra" style={{ animationDelay: `${40 + indice * 40}ms` }}>
+                <Link
+                  href={`/proyectos/${proyecto.id}`}
+                  className="fila grid gap-x-8 gap-y-3 !py-5 md:grid-cols-[minmax(0,1fr)_14rem]"
+                >
+                  <div className="min-w-0 space-y-1.5">
+                    <h2 className="font-medium leading-snug text-balance">{proyecto.title}</h2>
+                    <p className="line-clamp-2 max-w-[70ch] text-sm leading-relaxed text-[var(--color-apagado)]">
+                      {proyecto.objective}
+                    </p>
+                  </div>
 
-              <p className="mt-2.5 line-clamp-2 text-[0.8rem] leading-relaxed text-[var(--color-apagado)]">
-                {proyecto.objective}
-              </p>
-
-              <div className="mt-5 space-y-2.5">
-                <Avance porcentaje={avance} etiqueta="Tareas aprobadas" />
-                <div className="flex items-center justify-between text-xs text-[var(--color-apagado)]">
-                  <span>
-                    {proyecto.totalTareas === 0
-                      ? 'sin tareas todavía'
-                      : `${proyecto.aprobadas} de ${proyecto.totalTareas} aprobadas`}
-                    {proyecto.visibility === 'public' && ' · público'}
-                  </span>
-                  <Dinero valor={proyecto.budgetTotal} moneda={proyecto.currency} />
-                </div>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+                  <div className="space-y-2 self-center">
+                    <div className="flex items-baseline justify-between gap-3 text-xs">
+                      <span className="text-[var(--color-tenue)]">{presentarProyecto(proyecto.status)}</span>
+                      <span className="text-[var(--color-apagado)]">
+                        <Dinero valor={proyecto.budgetTotal} moneda={proyecto.currency} />
+                      </span>
+                    </div>
+                    <Avance porcentaje={avance} etiqueta="Tareas aprobadas" />
+                    <p className="text-xs text-[var(--color-apagado)] tabular-nums">
+                      {proyecto.totalTareas === 0
+                        ? 'Sin tareas todavía'
+                        : `${proyecto.aprobadas} de ${proyecto.totalTareas} aprobadas`}
+                      {proyecto.visibility === 'public' && ', público'}
+                    </p>
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

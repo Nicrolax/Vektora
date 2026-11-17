@@ -10,12 +10,15 @@
  *     elige: se otorga con `npm run cuenta:admin`.
  *   · Si un hash quedó con un coste menor al actual, se rehace al entrar (la persona no
  *     se entera y la base se actualiza sola).
+ *   · Al registrarse, la contraseña tiene que llegar al nivel mínimo de
+ *     `evaluarContrasena` (la misma regla que muestra el medidor del formulario).
  *   · Los intentos fallidos y las altas tienen tope (`limites.ts`). El tope se revisa
  *     ANTES de comparar la contraseña y cuenta igual exista o no el correo.
  */
 
 import { AuthError, ConflictoError, DatabaseError, LimiteIntentosError, ValidacionError } from '@/lib/errores';
 import type { UserRole } from '@/lib/db/types';
+import { NIVEL_MINIMO_CONTRASENA, evaluarContrasena } from '@/lib/validacion/entrada';
 import { COSTE_BCRYPT, costeDe, hashearContrasena, verificarContrasena } from './password';
 import { LimitadorAcceso, minutosDe } from './limites';
 import { ROLES_REGISTRABLES } from './permisos';
@@ -116,6 +119,14 @@ export class AuthService {
     const nombre = datos.nombre?.trim() || null;
     if (nombre !== null && nombre.length > 120) {
       throw new ValidacionError('El nombre puede tener como máximo 120 caracteres.', 'nombre');
+    }
+
+    const fuerza = evaluarContrasena(datos.contrasena, correo);
+    if (fuerza.nivel < NIVEL_MINIMO_CONTRASENA) {
+      throw new ValidacionError(
+        `La contraseña es ${fuerza.etiqueta.toLowerCase()}. ${fuerza.consejo ?? ''}`.trim(),
+        'password',
+      );
     }
 
     const hash = await hashearContrasena(datos.contrasena, this.coste);

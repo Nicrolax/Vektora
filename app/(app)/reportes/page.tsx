@@ -38,7 +38,7 @@ export default async function Reportes() {
 
       {reporte !== null && (
         <>
-          <Panel className="overflow-x-auto p-4">
+          <Panel className="overflow-x-auto">
             <Titulo ayuda="COUNT de tareas, COUNT filtrado de aprobadas, SUM y AVG del presupuesto, agrupado por proyecto.">
               Por proyecto
             </Titulo>
@@ -78,7 +78,7 @@ export default async function Reportes() {
           </Panel>
 
           <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
-            <Panel className="p-4">
+            <Panel>
               <Titulo ayuda="COUNT y SUM agrupados por estado de tarea.">Por estado</Titulo>
               <table className="mt-4 w-full text-sm">
                 <tbody>
@@ -98,7 +98,7 @@ export default async function Reportes() {
               </table>
             </Panel>
 
-            <Panel className="overflow-x-auto p-4">
+            <Panel className="overflow-x-auto">
               <Titulo ayuda="Tareas asignadas y completadas (COUNT), puntaje promedio de las entregas evaluadas (AVG) y reputación acumulada.">
                 Por proveedor
               </Titulo>
@@ -123,7 +123,7 @@ export default async function Reportes() {
                         <td className="px-3 py-2">{fila.nombre ?? 'sin nombre'}</td>
                         <td className={celda}>{fila.asignadas}</td>
                         <td className={celda}>{fila.completadas}</td>
-                        <td className={celda}>{fila.puntajePromedio === null ? '—' : fila.puntajePromedio.toFixed(2)}</td>
+                        <td className={celda}>{fila.puntajePromedio === null ? 'Sin datos' : fila.puntajePromedio.toFixed(2)}</td>
                         <td className={celda}>{fila.reputacion.toFixed(1)}</td>
                       </tr>
                     ))}

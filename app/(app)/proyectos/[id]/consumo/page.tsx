@@ -69,7 +69,7 @@ export default async function ConsumoProyecto({ params }: { params: Promise<{ id
         </p>
       </header>
 
-      <Panel className="p-5" retraso={60}>
+      <Panel retraso={60}>
         <dl className="grid grid-cols-2 gap-5 sm:grid-cols-4">
           <Dato etiqueta="Operaciones" valor={String(corridas.length)} />
           <Dato etiqueta="Tokens" valor={tokens.toLocaleString('es-UY')} />
@@ -103,7 +103,7 @@ export default async function ConsumoProyecto({ params }: { params: Promise<{ id
         )}
       </Panel>
 
-      <Panel className="p-5" retraso={120}>
+      <Panel retraso={120}>
         <Titulo ayuda="De la más reciente a la más antigua. Máximo 100.">Operaciones</Titulo>
 
         <div className="mt-4 space-y-1">

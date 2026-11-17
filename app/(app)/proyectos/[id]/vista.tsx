@@ -111,10 +111,13 @@ export function VistaProyecto({
         </span>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+      <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <Grafo tareas={tareas} seleccionada={seleccionada} onSeleccionar={setSeleccionada} />
 
-        <aside className="tarjeta entra h-fit p-5" style={{ animationDelay: '80ms' }}>
+        <aside
+          className="entra h-fit border-t border-[var(--color-borde)] pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6"
+          style={{ animationDelay: '80ms' }}
+        >
           {detalle === null ? (
             <p className="text-sm text-[var(--color-apagado)]">
               Elegí una tarea del grafo para ver su detalle.
@@ -131,7 +134,7 @@ export function VistaProyecto({
                 <div className="space-y-0.5">
                   <dt className="text-xs text-[var(--color-apagado)]">Presupuesto</dt>
                   <dd className="text-sm tabular-nums">
-                    {detalle.budget === null ? '—' : `USD ${detalle.budget.toFixed(2)}`}
+                    {detalle.budget === null ? 'Sin presupuesto' : `USD ${detalle.budget.toFixed(2)}`}
                   </dd>
                 </div>
                 <div className="space-y-0.5">

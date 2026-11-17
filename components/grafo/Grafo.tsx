@@ -178,7 +178,7 @@ export function Grafo({
                     if (evento.key === 'o') router.push(`/tareas/${nodo.id}`);
                   }}
                 >
-                  <title>{`${nodo.code} · ${etiqueta} — ${ayuda}`}</title>
+                  <title>{`${nodo.code} · ${etiqueta}. ${ayuda}`}</title>
                   <rect
                     width={ANCHO_NODO}
                     height={ALTO_NODO}

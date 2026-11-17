@@ -46,7 +46,7 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
             <p className="font-mono text-xs text-[var(--color-apagado)]">{tarea.code}</p>
-            <h1 className="text-xl font-semibold tracking-tight text-balance">{tarea.title}</h1>
+            <h1 className="text-2xl font-semibold text-balance">{tarea.title}</h1>
             <Insignia estado={tarea.status} />
           </div>
           {soyProveedor && (
@@ -62,12 +62,12 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
         )}
       </header>
 
-      <Panel className="p-4">
+      <Panel>
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Dato etiqueta="Presupuesto" valor={<Dinero valor={tarea.budget} />} />
           <Dato
             etiqueta="Esfuerzo estimado"
-            valor={`${tarea.estimatedHours ?? '—'} h`}
+            valor={tarea.estimatedHours === null ? 'Sin estimar' : `${tarea.estimatedHours} h`}
           />
           <Dato etiqueta="Criterios" valor={String(criterios.length)} />
           <Dato
@@ -89,7 +89,7 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
         )}
       </Panel>
 
-      <Panel className="p-4">
+      <Panel>
         <Titulo ayuda="Escritos al planificar, antes de que nadie trabaje. Son el contrato que el evaluador comprueba.">
           Criterios de aceptación
         </Titulo>
@@ -113,11 +113,11 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
         </ul>
       </Panel>
 
-      <Panel className="p-4">
+      <Panel>
         <Titulo ayuda="Puntuación de cada candidato con su desglose. Ninguna adjudicación ocurre sin esta explicación.">
           Candidaturas
         </Titulo>
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 divide-y divide-[var(--color-borde)]">
           {listaCandidaturas.length === 0 && !sinMercado && (
             <Vacio>Todavía no se puntuó ningún candidato para esta tarea.</Vacio>
           )}
@@ -132,7 +132,7 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
           {listaCandidaturas.map((candidatura) => (
             <div
               key={candidatura.id}
-              className="rounded-lg border border-[var(--color-borde)] bg-[var(--color-panel-alto)] p-3"
+              className="py-3.5 first:pt-0 last:pb-0"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-medium tabular-nums">
@@ -157,16 +157,16 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
         </div>
       </Panel>
 
-      <Panel className="p-4">
+      <Panel>
         <Titulo ayuda="Cada entrega con el veredicto del evaluador, criterio por criterio y con la evidencia citada.">
           Entregas y veredictos
         </Titulo>
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 divide-y divide-[var(--color-borde)]">
           {listaEntregables.length === 0 && <Vacio>Todavía no hay ninguna entrega.</Vacio>}
           {listaEntregables.map((entregable) => (
             <article
               key={entregable.id}
-              className="rounded-lg border border-[var(--color-borde)] bg-[var(--color-panel-alto)] p-4"
+              className="py-5 first:pt-0 last:pb-0"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
@@ -187,7 +187,7 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
               )}
 
               {entregable.qaResumen !== null && (
-                <p className="mt-3 rounded-md border-l-2 border-[var(--color-acento)] bg-[var(--color-panel)] px-3 py-2 text-xs leading-relaxed text-[var(--color-tenue)]">
+                <p className="mt-3 border-l-2 border-[var(--color-acento)] pl-3 text-xs leading-relaxed text-[var(--color-tenue)]">
                   {entregable.qaResumen}
                 </p>
               )}
@@ -214,8 +214,8 @@ export default async function DetalleTarea({ params }: { params: Promise<{ id: s
                           {resultado.downgraded && (
                             <span className="text-[var(--color-apagado)]">
                               {' '}
-                              — el modelo dijo {resultado.reported}, degradado por confianza{' '}
-                              {resultado.confidence.toFixed(2)}
+                              (el modelo dijo {resultado.reported}, degradado por confianza{' '}
+                              {resultado.confidence.toFixed(2)})
                             </span>
                           )}
                         </p>
