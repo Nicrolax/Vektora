@@ -16,7 +16,7 @@ agrega el número de PR. Si se bloquea, la marca `[!]` con el motivo en una lín
 
 **S1**
 - [ ] A · Benchmark de Qwen3-1.7B GGUF en local → `modelo/benchmark.md`
-- [ ] B · Servicio `inferencia` (llama.cpp) en compose, `/health` 200
+- [x] B · Servicio `inferencia` (llama.cpp) en compose, `/health` 200 → `plataforma/inferencia.md`
 - [ ] C · Especificación del dataset v0 → `dataset/especificacion.md`
 - [ ] D · 40 contactos cálidos (fuera del repo) + 3 pedidos de presentación
 
