@@ -60,8 +60,8 @@ Trampas técnicas a tener en cuenta:
 
 - [ ] Completar [`semana-0.md`](semana-0.md): quién es A–D, hardware por máquina, si hay
   menores de edad, si el repo es público o privado, si la institución es miembro de AWS Academy.
-- [ ] Tag `entrega-utu-v1` sobre `main`, commit `2db583e` (la versión que evalúa la materia).
-- [ ] Rama `pivot` creada y CI corriendo sobre ella (ver [`README.md`](README.md)).
+- [x] Tag `entrega-utu-v1` sobre `main`, commit `2db583e` (la versión que evalúa la materia).
+- [x] Rama `pivot` creada y CI corriendo sobre ella (ver [`README.md`](README.md)).
 
 ## Fase 1 (S1–S4): inferencia local + kit de datos + primeros contactos
 

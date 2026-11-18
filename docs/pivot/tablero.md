@@ -9,8 +9,8 @@ agrega el número de PR. Si se bloquea, la marca `[!]` con el motivo en una lín
 ## Semana 0
 
 - [ ] Completar `semana-0.md` — Todos
-- [ ] Tag `entrega-utu-v1` sobre `main` (commit `2db583e`)
-- [ ] Rama `pivot` creada, CI corriendo sobre ella
+- [x] Tag `entrega-utu-v1` sobre `main` (commit `2db583e`)
+- [x] Rama `pivot` creada, CI corriendo sobre ella (corrida #46 en verde)
 
 ## Fase 1: inferencia local + kit de datos + primeros contactos
 
