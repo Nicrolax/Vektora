@@ -86,6 +86,7 @@ npm run build            # next build
 npm run db:check         # tablas, columnas, RPC, catálogo y VEKTORA_OWNER_ID contra la base real
 npm run db:evidencia     # SELECT de la conexión (ssl, TLS) y últimas cuentas, sin mostrar el host
 npm run ai:check         # configuración, generación estructurada, fallback forzado y embeddings
+npm run modelo:bajar     # baja un GGUF a modelos/ con SHA256 verificado (-- prueba: 1 MB; -- --lista)
 
 # Ciclo autónomo desde la línea de comandos
 npm run plan -- "<objetivo>" [presupuesto]

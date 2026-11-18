@@ -37,6 +37,34 @@ jobs:
       - run: npm run sql:check
       - run: npm run build
 
+  # Servicio `inferencia` del compose (pivot, S1 · B): llama.cpp con un modelo GGUF local.
+  # Usa el modelo de prueba de 1 MB (SHA256 verificado): comprueba que el servicio arranca
+  # endurecido y responde, no la calidad del modelo.
+  inferencia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Bajar el modelo de prueba
+        run: npm run modelo:bajar -- prueba
+      - name: Levantar la inferencia y comprobar que responde
+        run: |
+          # .env DESECHABLE: el compose exige las variables de la base aunque solo se levante
+          # la inferencia. No hay ninguna base en este job.
+          printf 'POSTGRES_DB=ci\nPOSTGRES_USER=ci\nPOSTGRES_PASSWORD=ci-desechable\nINFERENCIA_MODELO=stories260K.gguf\n' > .env
+          docker compose up -d --wait --wait-timeout 120 inferencia
+          estado="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/health)"
+          if [ "$estado" != "200" ]; then echo "::error title=inferencia::/health respondió $estado"; exit 1; fi
+          curl -fsS http://127.0.0.1:8080/completion -d '{"prompt":"Once upon a time","n_predict":8}' | grep -q '"content"'
+      - name: Registros de la inferencia (si algo falló)
+        if: failure()
+        run: docker compose logs inferencia
+
   base:
     runs-on: ubuntu-latest
     timeout-minutes: 15
