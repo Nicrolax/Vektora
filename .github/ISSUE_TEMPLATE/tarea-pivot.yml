@@ -1,0 +1,43 @@
+name: Tarea del pivot
+description: Una tarea del plan de 12 semanas (docs/pivot/plan.md)
+title: "S?? · ? · "
+labels: ["pivot"]
+body:
+  - type: dropdown
+    id: persona
+    attributes:
+      label: Responsable
+      options: ["A — IA / ML", "B — Plataforma", "C — Datos y legal", "D — Comercial e integración"]
+    validations:
+      required: true
+  - type: input
+    id: semana
+    attributes:
+      label: Semana
+      placeholder: "S3"
+    validations:
+      required: true
+  - type: input
+    id: horas
+    attributes:
+      label: Horas estimadas (máximo 3,5 por semana)
+      placeholder: "3,5"
+    validations:
+      required: true
+  - type: input
+    id: depende
+    attributes:
+      label: Depende de
+      placeholder: "S2 · A (proveedor local)"
+  - type: textarea
+    id: terminado
+    attributes:
+      label: Terminado cuando
+      description: Copiado del plan. Si no se puede comprobar, la tarea está mal definida.
+    validations:
+      required: true
+  - type: textarea
+    id: salida
+    attributes:
+      label: ¿Puede dejar un estado del que el sistema no sale solo?
+      placeholder: "No / Sí: …, se resuelve con …"

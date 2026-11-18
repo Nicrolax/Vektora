@@ -47,3 +47,25 @@ Claude outputs/
 
 # --- Configuración local de Claude Code -----------------------------------------------
 .claude/
+
+# --- Pivot enterprise: datos, pesos y estado que NUNCA se versionan -------------------
+# Pesos de modelos: se publican en GitHub Releases con su SHA256, no en git.
+modelos/
+*.gguf
+*.safetensors
+# Datasets: los públicos (NO PRODUCTIVOS) y, sobre todo, cualquier exporte de una empresa.
+# Solo los fixtures chicos y sintéticos de tests/fixtures/ se versionan.
+datos/
+# Contactos, funnel y notas con nombres de personas.
+privado/
+# Entrenamiento y ranker (Python).
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+# Terraform: el estado y las variables pueden llevar secretos. El .terraform.lock.hcl SÍ se sube.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log

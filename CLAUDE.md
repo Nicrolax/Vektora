@@ -13,6 +13,30 @@ Las 7 fases están **completas** (planificar → adjudicar → entregar → juzg
 cuotas, observabilidad y guía de despliegue). El trabajo ahora es mantenimiento, correcciones,
 documentación para la entrega y preparación de la demo.
 
+## Pivot en curso: enterprise cerrado (leer antes de tocar la rama `pivot`)
+
+`main` es la versión de la materia, congelada en el tag `entrega-utu-v1`: solo recibe
+correcciones de la entrega. El pivot se integra en la rama `pivot`, con una rama por tarea
+(`s<semana>-<persona>-<tema>`) y PR. Plan, tablero y forma de trabajo: `docs/pivot/`.
+
+En la rama `pivot`, estas reglas **reemplazan** a las de abajo cuando choquen:
+
+1. **Sin APIs de IA externas.** Groq y Gemini se están eliminando (tarea S3 · B). No agregar
+   llamadas nuevas a ellos ni a ningún otro servicio. La inferencia va a `llama-server` local,
+   siempre por `getAiClient()`. Reemplaza a la regla 2 en lo que toca a la IA.
+2. **«La IA propone, el jefe veta con plazo; si vence, se aplica.»** Reemplaza a la regla 1.
+   Una aprobación pendiente es un estado más del que el sistema tiene que salir solo: el
+   defecto del punto muerto sigue siendo el que hay que buscar.
+3. **Datos públicos o sintéticos = NO PRODUCTIVO.** Nada dice "entrenado con datos reales"
+   hasta que lo sea. Datos de empresas, contactos y pesos de modelos **nunca** van a git
+   (`datos/`, `privado/`, `modelos/` están en `.gitignore`).
+4. **Cambiar de embeddings invalida los umbrales medidos** (0.95, 0.73/0.89, 0.50). Se
+   recalibra con `npm run skills:calibrate` antes de dar la tarea por terminada.
+5. **Lo que evalúa a un empleado se explica y se puede apelar.** Nunca produce una sanción
+   automática (Ley 18.331, art. 16).
+6. Cada tarea tiene su "terminado cuando" en `docs/pivot/plan.md`. Al cerrarla, marcarla en
+   `docs/pivot/tablero.md` dentro del mismo PR.
+
 ## Reglas del proyecto (no negociables)
 
 1. **100 % autónomo.** Ningún camino puede depender de una persona que no existe.

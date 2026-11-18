@@ -1,7 +1,8 @@
 # Plan de acción del pivot: enterprise cerrado con modelos propios
 
 **Estado:** propuesta de trabajo, no forma parte de lo evaluado por la materia. La versión
-entregable queda congelada en el tag `entrega-utu-v1` y el pivot avanza en una rama aparte.
+entregable queda congelada en el tag `entrega-utu-v1` y el pivot avanza en la rama `pivot`.
+Cómo se trabaja: [`README.md`](README.md). Estado de cada tarea: [`tablero.md`](tablero.md).
 
 ## Punto de partida
 
@@ -57,17 +58,18 @@ Trampas técnicas a tener en cuenta:
 
 ## Semana 0 (sin horas)
 
-- Completar los datos que faltan: hardware por máquina (CPU, RAM, GPU/VRAM), edades, si el repo
-  es público o privado, si la institución es miembro de AWS Academy.
-- Crear el tag `entrega-utu-v1` y la rama del pivot.
+- [ ] Completar [`semana-0.md`](semana-0.md): quién es A–D, hardware por máquina, si hay
+  menores de edad, si el repo es público o privado, si la institución es miembro de AWS Academy.
+- [x] Tag `entrega-utu-v1` sobre `main` (la versión que evalúa la materia).
+- [ ] Rama `pivot` creada y CI corriendo sobre ella (ver [`README.md`](README.md)).
 
 ## Fase 1 (S1–S4): inferencia local + kit de datos + primeros contactos
 
 | Sem | Quién | Tarea | Depende de | Terminado cuando |
 |---|---|---|---|---|
-| S1 | A | Bajar Qwen3-1.7B GGUF Q4_K_M (verificar licencia), levantar `llama-server` y medir | — | `docs/modelo/benchmark.md` con tok/s, RAM y latencia de un plan |
+| S1 | A | Bajar Qwen3-1.7B GGUF Q4_K_M (verificar licencia), levantar `llama-server` y medir | — | `docs/pivot/modelo/benchmark.md` con tok/s, RAM y latencia de un plan |
 | S1 | B | Servicio `inferencia` (llama.cpp) en `docker-compose.yml`, con el modelo como volumen | — | `docker compose up inferencia` y `/health` responde 200 |
-| S1 | C | Especificación del dataset v0: campos, pedido mínimo vs. ideal, qué NO pedir | — | `docs/dataset/especificacion.md` revisado por D |
+| S1 | C | Especificación del dataset v0: campos, pedido mínimo vs. ideal, qué NO pedir | — | `docs/pivot/dataset/especificacion.md` revisado por D |
 | S1 | D | Lista de 40 contactos cálidos (planilla privada, **nunca en el repo**) + pedido de presentación a 3 profesores | Spec de C | 3 pedidos enviados |
 | S2 | A | Proveedor `local` en `lib/ai/providers`, compatible con la API de OpenAI y montado sobre `http.ts` | S1 A+B | `npm run ai:check` pasa contra el contenedor |
 | S2 | B | Red cerrada de prueba: compose con `internal: true` | S1 B | Un `curl` a internet falla desde el contenedor y uno a `inferencia` funciona |
@@ -76,7 +78,7 @@ Trampas técnicas a tener en cuenta:
 | S3 | A | Planner con salida restringida: Zod → JSON Schema → gramática de llama.cpp. Si falla 2 veces, plantilla determinista | S2 A | 50 objetivos de prueba → 50 DAG válidos |
 | S3 | B | Eliminar Groq y Gemini (código, `.env.example`, docs) | S2 A | `grep -ri "groq\|gemini" lib app scripts` vacío y `verify` en verde |
 | S3 | C | `scripts/seudonimizar.ts`: HMAC-SHA256 con sal del cliente sobre personas y emails, elimina texto libre, corre offline | S2 C | Test: el CSV de salida no tiene nombres ni emails |
-| S3 | D | 10 contactos más + guion de la primera reunión | — | Guion en `docs/comercial/` (sin datos personales) |
+| S3 | D | 10 contactos más + guion de la primera reunión | — | Guion en `docs/pivot/comercial/` (sin datos personales) |
 | S4 | A | Embeddings locales: multilingual-e5-small (MIT, 384 dims) servido por llama.cpp | S3 A | Embebe 100 skills y queda medida la latencia |
 | S4 | B | Migración `0013`: `vector(1536)` → `vector(384)` en las columnas y funciones de 0003/0004, y `sql:build` | Dimensión definida por A | `db/verify/` en verde sobre base limpia |
 | S4 | C | Plantillas legales v0: NDA mutuo + acuerdo de uso de datos (permiso de entrenamiento, prohibido el uso cruzado entre clientes, borrado, propiedad del modelo), marcadas "revisar con abogado" | S1 C | Revisadas por D y por un profesor |
@@ -96,7 +98,7 @@ Trampas técnicas a tener en cuenta:
 | S6 | D | **Meta:** ≥3 reuniones hechas | — | Funnel actualizado |
 | S7 | A | Harness de evaluación: validez del DAG, precisión de asignación, recall@k, p95, RAM. **NO PRODUCTIVO** | S5–S6 A | `npm run eval` produce la tabla |
 | S7 | B | Veto con plazo: la asignación queda `propuesta` con `vence_en`, el jefe aprueba o veta, **si vence se aplica sola** | S5 B | Test: una propuesta sin respuesta se aplica en la siguiente corrida del cron |
-| S7 | C | Matriz de permisos + qué NO ve el jefe + aviso de transparencia para el empleado | S5 B | `docs/enterprise/permisos.md` |
+| S7 | C | Matriz de permisos + qué NO ve el jefe + aviso de transparencia para el empleado | S5 B | `docs/pivot/enterprise/permisos.md` |
 | S7 | D | Propuesta de piloto: alcance, criterio de éxito, informe de valor | — | Documento de 1 página |
 | S8 | A | Ranker LightGBM LambdaMART (CPU) sobre datos públicos, exportado a JSON | S7 A | Mejora el recall@5 frente a las reglas, o queda documentado por qué no |
 | S8 | B | UI del jefe: propuestas pendientes con aprobar/vetar y registro en `audit_logs` | S7 B | Revisada en el navegador |
@@ -109,7 +111,7 @@ Trampas técnicas a tener en cuenta:
 |---|---|---|---|---|
 | S9 | A | Empaquetar modelos: GGUF + SHA256 + manifiesto versionado, publicados en GitHub Releases | S4–S6 A | Una descarga verifica el checksum |
 | S9 | B | `docker-compose.onprem.yml`: red interna, modelos locales, sin salida | S2 B, S9 A | El ciclo arranca sin red |
-| S9 | C | Checklist de la Ley 18.331: el cliente es responsable del tratamiento (registra la base ante la URCDP), nosotros encargados; retención y borrado | S4 C | `docs/legal/cumplimiento.md` |
+| S9 | C | Checklist de la Ley 18.331: el cliente es responsable del tratamiento (registra la base ante la URCDP), nosotros encargados; retención y borrado | S4 C | `docs/pivot/legal/cumplimiento.md` |
 | S9 | D | One-pager v1 + guion de demo de 3 min | S8 | Ensayado frente al equipo |
 | S10 | A | Modo degradado: sin modelo, el planner usa plantilla, el juez chequeos deterministas y reintento, el matching reglas | S9 A | Test con `inferencia` apagada: el ciclo termina |
 | S10 | B | **Test e2e con egreso bloqueado:** plan → match → entrega → QA → propagar | S9 B | Job de CI en verde |
@@ -161,4 +163,4 @@ el contenedor de B, y el pedido de D cita la especificación de C.
 **Uso de IA y autoría.** Este documento se elaboró con asistencia de Claude (Anthropic). Las
 decisiones de diseño, la revisión y la verificación son de los autores, que asumen la
 responsabilidad sobre su contenido. Constancia formal en
-[`11-declaracion-de-uso-de-ia.md`](11-declaracion-de-uso-de-ia.md).
+[`11-declaracion-de-uso-de-ia.md`](../11-declaracion-de-uso-de-ia.md).
